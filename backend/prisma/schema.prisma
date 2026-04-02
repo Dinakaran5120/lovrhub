@@ -1,0 +1,682 @@
+// LovrHub Dating App - Prisma Schema
+// Production-ready schema with all models
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [uuidOssp(map: "uuid-ossp"), postgis]
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum AccountStatus {
+  active
+  inactive
+  suspended
+  deleted
+  pending_verification
+}
+
+enum SubscriptionTier {
+  free
+  premium
+  premium_plus
+}
+
+enum GenderType {
+  man
+  woman
+  non_binary
+  prefer_not_to_say
+  other
+}
+
+enum OrientationType {
+  straight
+  gay
+  lesbian
+  bisexual
+  pansexual
+  asexual
+  queer
+}
+
+enum RelationshipGoal {
+  serious
+  casual
+  friendship
+  not_sure
+}
+
+enum InterestedInType {
+  men
+  women
+  non_binary
+  everyone
+}
+
+enum VisibilityType {
+  public
+  private
+  matches_only
+}
+
+enum SwipeAction {
+  like
+  pass
+  super_like
+}
+
+enum MatchStatus {
+  active
+  unmatched
+  blocked
+}
+
+enum MessageType {
+  text
+  image
+  video
+  audio
+  gif
+  system
+}
+
+enum MessageStatus {
+  sent
+  delivered
+  read
+}
+
+enum PostVisibility {
+  public
+  private
+  matches_only
+}
+
+enum MoodType {
+  lonely
+  happy
+  stressed
+  heartbroken
+  flirty
+}
+
+enum ReportReason {
+  spam
+  inappropriate
+  harassment
+  fake_profile
+  underage
+  other
+}
+
+enum MediaPurpose {
+  profile_photo
+  post_image
+  post_video
+  message_attachment
+}
+
+enum AuthProvider {
+  email
+  phone
+  google
+  apple
+}
+
+enum NotificationType {
+  match
+  message
+  like
+  super_like
+  profile_view
+  system
+}
+
+// ---------------------------------------------------------------------------
+// User & Auth Models
+// ---------------------------------------------------------------------------
+
+model User {
+  id                String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  email             String?       @unique @db.VarChar(255)
+  phone             String?       @unique @db.VarChar(20)
+  passwordHash      String?       @db.VarChar(255)
+  authProvider      AuthProvider  @default(email)
+  providerAccountId String?       @db.VarChar(255)
+  status            AccountStatus @default(pending_verification)
+  subscriptionTier  SubscriptionTier @default(free)
+  emailVerifiedAt   DateTime?
+  phoneVerifiedAt   DateTime?
+  lastActiveAt      DateTime?
+  lastLoginAt       DateTime?
+  loginCount        Int           @default(0)
+  fcmToken          String?       @db.VarChar(512)
+  apnsToken         String?       @db.VarChar(512)
+  deletedAt         DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  // Relations
+  profile           UserProfile?
+  preference        UserPreference?
+  languages         UserLanguage[]
+  interests         UserInterest[]
+  media             UserMedia[]
+  stats             UserStat?
+  refreshTokens     RefreshToken[]
+
+  // Swipes sent by this user
+  swipesSent        Swipe[]       @relation("SwipeSender")
+  // Swipes received by this user
+  swipesReceived    Swipe[]       @relation("SwipeReceiver")
+
+  // Matches where this user is userA (id < partner's id)
+  matchesAsA        Match[]       @relation("MatchUserA")
+  // Matches where this user is userB
+  matchesAsB        Match[]       @relation("MatchUserB")
+
+  // Conversations
+  participations    ConversationParticipant[]
+  messagesSent      Message[]     @relation("MessageSender")
+
+  // Posts
+  posts             Post[]
+
+  // Blocks
+  blocksInitiated   Block[]       @relation("BlockInitiator")
+  blocksReceived    Block[]       @relation("BlockTarget")
+
+  // Reports
+  reportsSubmitted  Report[]      @relation("ReportSubmitter")
+  reportsReceived   Report[]      @relation("ReportTarget")
+
+  // Subscriptions
+  subscriptions     Subscription[]
+
+  // Notifications
+  notifications     Notification[]
+
+  // Audit logs
+  auditLogs         AuditLog[]
+
+  @@index([email])
+  @@index([phone])
+  @@index([status])
+  @@index([subscriptionTier])
+  @@index([deletedAt])
+  @@map("users")
+}
+
+model UserProfile {
+  id              String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId          String          @unique @db.Uuid
+  displayName     String          @db.VarChar(50)
+  bio             String?         @db.VarChar(500)
+  birthDate       DateTime        @db.Date
+  gender          GenderType
+  orientation     OrientationType @default(straight)
+  relationshipGoal RelationshipGoal @default(not_sure)
+  interestedIn    InterestedInType @default(everyone)
+  height          Int?            // cm
+  occupation      String?         @db.VarChar(100)
+  education       String?         @db.VarChar(100)
+  hometown        String?         @db.VarChar(100)
+  currentCity     String?         @db.VarChar(100)
+  // Location stored as lat/lng; PostGIS geo queries via $queryRaw
+  locationLat     Decimal?        @db.Decimal(10, 7)
+  locationLng     Decimal?        @db.Decimal(10, 7)
+  locationUpdatedAt DateTime?
+  mood            MoodType?
+  moodUpdatedAt   DateTime?
+  profilePhotoUrl String?         @db.VarChar(512)
+  visibility      VisibilityType  @default(public)
+  isVerified      Boolean         @default(false)
+  verifiedAt      DateTime?
+  completionScore Int             @default(0) // 0-100
+  deletedAt       DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // Relations
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([gender])
+  @@index([locationLat, locationLng])
+  @@index([deletedAt])
+  @@map("user_profiles")
+}
+
+model UserPreference {
+  id                String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId            String    @unique @db.Uuid
+  minAge            Int       @default(18)
+  maxAge            Int       @default(65)
+  maxDistanceKm     Int       @default(50)
+  interestedIn      InterestedInType @default(everyone)
+  showMe            Boolean   @default(true)
+  notifyOnMatch     Boolean   @default(true)
+  notifyOnMessage   Boolean   @default(true)
+  notifyOnLike      Boolean   @default(true)
+  notifyOnSuperLike Boolean   @default(true)
+  notifyOnProfileView Boolean @default(false)
+  allowMessagesFrom VisibilityType @default(matches_only)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_preferences")
+}
+
+model UserLanguage {
+  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId    String   @db.Uuid
+  language  String   @db.VarChar(50)
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, language])
+  @@index([userId])
+  @@map("user_languages")
+}
+
+model UserInterest {
+  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId    String   @db.Uuid
+  interest  String   @db.VarChar(100)
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, interest])
+  @@index([userId])
+  @@map("user_interests")
+}
+
+model UserMedia {
+  id          String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId      String       @db.Uuid
+  purpose     MediaPurpose @default(profile_photo)
+  url         String       @db.VarChar(512)
+  thumbnailUrl String?     @db.VarChar(512)
+  mimeType    String       @db.VarChar(100)
+  sizeBytes   Int
+  width       Int?
+  height      Int?
+  durationSec Int?         // for video
+  sortOrder   Int          @default(0)
+  isActive    Boolean      @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([purpose])
+  @@index([deletedAt])
+  @@map("user_media")
+}
+
+model UserStat {
+  id              String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId          String   @unique @db.Uuid
+  profileViews    Int      @default(0)
+  likesReceived   Int      @default(0)
+  likesSent       Int      @default(0)
+  superLikesReceived Int   @default(0)
+  superLikesSent  Int      @default(0)
+  matchCount      Int      @default(0)
+  conversationCount Int    @default(0)
+  messagesSent    Int      @default(0)
+  postCount       Int      @default(0)
+  updatedAt       DateTime @updatedAt
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_stats")
+}
+
+model RefreshToken {
+  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId      String   @db.Uuid
+  tokenHash   String   @unique @db.VarChar(255)
+  deviceId    String?  @db.VarChar(255)
+  deviceType  String?  @db.VarChar(50)
+  ipAddress   String?  @db.VarChar(45)
+  userAgent   String?  @db.VarChar(512)
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdAt   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+// ---------------------------------------------------------------------------
+// Discovery & Matching Models
+// ---------------------------------------------------------------------------
+
+model Swipe {
+  id          String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  senderId    String      @db.Uuid
+  receiverId  String      @db.Uuid
+  action      SwipeAction
+  seenAt      DateTime?   // when receiver saw this like (premium feature)
+  createdAt   DateTime    @default(now())
+
+  sender      User        @relation("SwipeSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver    User        @relation("SwipeReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@unique([senderId, receiverId])
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("swipes")
+}
+
+model Match {
+  id          String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  // userAId is always the lexicographically smaller UUID (enforced in service)
+  userAId     String      @db.Uuid
+  userBId     String      @db.Uuid
+  status      MatchStatus @default(active)
+  superLiked  Boolean     @default(false)
+  unmatchedBy String?     @db.Uuid   // userId who unmatched
+  unmatchedAt DateTime?
+  deletedAt   DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  userA       User        @relation("MatchUserA", fields: [userAId], references: [id], onDelete: Cascade)
+  userB       User        @relation("MatchUserB", fields: [userBId], references: [id], onDelete: Cascade)
+
+  conversation Conversation?
+
+  @@unique([userAId, userBId])
+  @@index([userAId])
+  @@index([userBId])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("matches")
+}
+
+// ---------------------------------------------------------------------------
+// Messaging Models
+// ---------------------------------------------------------------------------
+
+model Conversation {
+  id           String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  matchId      String?   @unique @db.Uuid
+  lastMessageId String?  @db.Uuid
+  lastMessageAt DateTime?
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  match        Match?    @relation(fields: [matchId], references: [id], onDelete: SetNull)
+  participants ConversationParticipant[]
+  messages     Message[]
+
+  @@index([matchId])
+  @@index([lastMessageAt])
+  @@index([deletedAt])
+  @@map("conversations")
+}
+
+model ConversationParticipant {
+  id               String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  conversationId   String       @db.Uuid
+  userId           String       @db.Uuid
+  lastReadAt       DateTime?
+  lastReadMessageId String?     @db.Uuid
+  isMuted          Boolean      @default(false)
+  isArchived       Boolean      @default(false)
+  deletedAt        DateTime?
+  joinedAt         DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  conversation     Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([conversationId])
+  @@index([userId])
+  @@index([deletedAt])
+  @@map("conversation_participants")
+}
+
+model Message {
+  id             String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  conversationId String        @db.Uuid
+  senderId       String        @db.Uuid
+  type           MessageType   @default(text)
+  // content max 500 chars enforced in service layer
+  content        String?       @db.VarChar(500)
+  mediaUrl       String?       @db.VarChar(512)
+  mediaThumbnail String?       @db.VarChar(512)
+  mimeType       String?       @db.VarChar(100)
+  status         MessageStatus @default(sent)
+  replyToId      String?       @db.Uuid
+  isEdited       Boolean       @default(false)
+  editedAt       DateTime?
+  deletedAt      DateTime?
+  deliveredAt    DateTime?
+  readAt         DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  conversation   Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User          @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  replyTo        Message?      @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies        Message[]     @relation("MessageReplies")
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([createdAt])
+  @@index([deletedAt])
+  @@map("messages")
+}
+
+// ---------------------------------------------------------------------------
+// Posts / Stories Models
+// ---------------------------------------------------------------------------
+
+model Post {
+  id          String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId      String         @db.Uuid
+  caption     String?        @db.VarChar(300)
+  mood        MoodType?
+  visibility  PostVisibility @default(public)
+  viewCount   Int            @default(0)
+  likeCount   Int            @default(0)
+  expiresAt   DateTime?      // for story-style ephemeral posts
+  deletedAt   DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  media       PostMedia[]
+
+  @@index([userId])
+  @@index([visibility])
+  @@index([createdAt])
+  @@index([expiresAt])
+  @@index([deletedAt])
+  @@map("posts")
+}
+
+model PostMedia {
+  id           String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  postId       String       @db.Uuid
+  purpose      MediaPurpose @default(post_image)
+  url          String       @db.VarChar(512)
+  thumbnailUrl String?      @db.VarChar(512)
+  mimeType     String       @db.VarChar(100)
+  sizeBytes    Int
+  width        Int?
+  height       Int?
+  durationSec  Int?
+  sortOrder    Int          @default(0)
+  deletedAt    DateTime?
+  createdAt    DateTime     @default(now())
+
+  post         Post         @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@index([deletedAt])
+  @@map("post_media")
+}
+
+// ---------------------------------------------------------------------------
+// Safety & Moderation Models
+// ---------------------------------------------------------------------------
+
+model Block {
+  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  blockerId   String   @db.Uuid
+  blockedId   String   @db.Uuid
+  reason      String?  @db.VarChar(255)
+  createdAt   DateTime @default(now())
+
+  blocker     User     @relation("BlockInitiator", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked     User     @relation("BlockTarget", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+  @@index([blockerId])
+  @@index([blockedId])
+  @@map("blocks")
+}
+
+model Report {
+  id           String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  reporterId   String       @db.Uuid
+  reportedId   String       @db.Uuid
+  reason       ReportReason
+  description  String?      @db.VarChar(1000)
+  evidenceUrls String[]     @default([])
+  // Optional reference to a specific piece of content
+  refType      String?      @db.VarChar(50)   // e.g. "message", "post", "profile"
+  refId        String?      @db.Uuid
+  isReviewed   Boolean      @default(false)
+  reviewedAt   DateTime?
+  reviewedBy   String?      @db.Uuid
+  reviewNote   String?      @db.VarChar(500)
+  deletedAt    DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  reporter     User         @relation("ReportSubmitter", fields: [reporterId], references: [id], onDelete: Cascade)
+  reported     User         @relation("ReportTarget", fields: [reportedId], references: [id], onDelete: Cascade)
+
+  @@index([reporterId])
+  @@index([reportedId])
+  @@index([isReviewed])
+  @@index([deletedAt])
+  @@map("reports")
+}
+
+// ---------------------------------------------------------------------------
+// Subscription / Billing Models
+// ---------------------------------------------------------------------------
+
+model Subscription {
+  id                  String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId              String           @db.Uuid
+  tier                SubscriptionTier @default(free)
+  stripeCustomerId    String?          @db.VarChar(255)
+  stripeSubscriptionId String?         @db.VarChar(255)
+  stripePriceId       String?          @db.VarChar(255)
+  status              String           @db.VarChar(50)  // active, canceled, past_due, trialing
+  currentPeriodStart  DateTime?
+  currentPeriodEnd    DateTime?
+  cancelAtPeriodEnd   Boolean          @default(false)
+  canceledAt          DateTime?
+  trialStart          DateTime?
+  trialEnd            DateTime?
+  metadata            Json?
+  deletedAt           DateTime?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  user                User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([stripeSubscriptionId])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("subscriptions")
+}
+
+// ---------------------------------------------------------------------------
+// Notification Model
+// ---------------------------------------------------------------------------
+
+model Notification {
+  id          String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId      String           @db.Uuid
+  type        NotificationType
+  title       String           @db.VarChar(100)
+  body        String           @db.VarChar(500)
+  data        Json?            // arbitrary payload (matchId, messageId, etc.)
+  isRead      Boolean          @default(false)
+  readAt      DateTime?
+  isPushed    Boolean          @default(false)
+  pushedAt    DateTime?
+  deletedAt   DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([type])
+  @@index([deletedAt])
+  @@map("notifications")
+}
+
+// ---------------------------------------------------------------------------
+// Audit Log Model
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId      String?  @db.Uuid
+  action      String   @db.VarChar(100)
+  entity      String?  @db.VarChar(100)
+  entityId    String?  @db.Uuid
+  oldValues   Json?
+  newValues   Json?
+  ipAddress   String?  @db.VarChar(45)
+  userAgent   String?  @db.VarChar(512)
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
