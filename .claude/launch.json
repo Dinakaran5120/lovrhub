@@ -1,0 +1,35 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Expo Dev Server",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "C:/demo/lovrhub", "start"],
+      "port": 8081
+    },
+    {
+      "name": "Expo Web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "C:/demo/lovrhub", "run", "web"],
+      "port": 8081
+    },
+    {
+      "name": "NestJS API (dev)",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "C:/demo/lovrhub-api", "run", "start:dev"],
+      "port": 3000
+    },
+    {
+      "name": "NestJS API (debug)",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "C:/demo/lovrhub-api", "run", "start:debug"],
+      "port": 9229
+    },
+    {
+      "name": "Prisma Studio",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "C:/demo/lovrhub-api", "run", "prisma:studio"],
+      "port": 5555
+    }
+  ]
+}
