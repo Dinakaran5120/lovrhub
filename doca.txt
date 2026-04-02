@@ -1,0 +1,1523 @@
+LovrHub — Production Backend Architecture
+🔎 1. UI-Driven Backend Requirement Analysis
+Auth Layer (from welcome, signup, signup-phone, otp-verify, login, profile-setup)
+UI Signal	Backend Requirement
+Email + password signup	POST /auth/register/email with bcrypt hashing
+Phone signup with country code	POST /auth/register/phone → trigger SMS OTP
+4-digit OTP verification screen	POST /auth/otp/verify with time-limited token (5 min TTL)
+OTP resend link	POST /auth/otp/resend with rate limiting (3/hr)
+Login with email/password	POST /auth/login → JWT access + refresh tokens
+Forgot password link	POST /auth/password/reset-request + email link
+8-step profile setup	PATCH /users/me/profile with partial update support, step tracking
+Profile System (from profile-setup, account)
+UI Signal	Backend Requirement
+Name, Age fields	users.display_name, users.birth_date (never store raw age — calculate)
+Gender single select (5 options)	user_profiles.gender enum
+Sexual orientation single select (7 options)	user_profiles.orientation enum
+Interested In multi-select	user_preferences.interested_in[] array
+Relationship type single select	user_preferences.relationship_type enum
+Languages multi-select	user_languages junction table
+Interests multi-select (12 options)	user_interests junction table
+Photo upload (final step)	Media upload → S3 → store URL in user_media
+Account stats: matches, chats, likes	Materialized counters on user_stats table
+Verified badge	users.is_verified boolean
+Public/Private account toggle	user_profiles.visibility enum
+Deactivate / Permanently delete	users.account_status enum + soft delete + data purge job
+Discover Tab (from index.tsx — card swiping)
+UI Signal	Backend Requirement
+Profile cards with distance	PostGIS geo-query sorted by proximity
+Like (❤️) / Pass (✗)	POST /swipes → creates swipe record, triggers match check
+Mutual like → match animation	Match detection on every like: if reverse swipe exists → create match
+Card shows age, bio, interests, verified	Single profile detail endpoint with joins
+Cards auto-advance	Pagination cursor — serve N profiles per call
+Explore Tab (from explore.tsx — mood browsing)
+UI Signal	Backend Requirement
+Mood selection (5 moods)	users.current_mood + GET /discover/explore?mood=...
+Profile cards per mood	Filter profiles by active mood, proximity, preferences
+Inbox (from inbox.tsx, chat-detail.tsx)
+UI Signal	Backend Requirement
+Vibed Profiles row (matches online)	GET /matches?online=true — matches with last_seen recently
+Chat list with unread count	GET /conversations with aggregated unread_count
+All / Unread tab filters	?filter=unread query param
+Search conversations	?search= full-text query
+Chat detail with message history	GET /conversations/:id/messages paginated
+Read receipts (✓✓ blue)	PATCH /messages/:id/read → WebSocket broadcast
+Typing indicator	WebSocket event typing:start / typing:stop
+Message input max 500 chars	Validation at API layer
+Attachment button	POST /conversations/:id/attachments → S3 upload
+Phone/Video call (UI only)	Design-ready: WebRTC signaling endpoint
+Upload Tab (from upload.tsx — 5-step flow)
+UI Signal	Backend Requirement
+Photo/Video selection	Client picks from library → multipart upload to S3 presigned URL
+Crop step (square, portrait, landscape)	Crop hints stored; actual processing by Sharp/Lambda
+Caption field	posts.caption text field
+Mood selection	posts.mood enum field
+Privacy toggle (Public/Private)	posts.visibility enum — enforced at feed query level
+Review & publish	POST /posts
+Account Tab (from account.tsx)
+UI Signal	Backend Requirement
+Block user / Unblock	POST /blocks / DELETE /blocks/:userId
+Report user	POST /reports → abuse report record
+Premium subscription button	GET /subscriptions/plans + POST /subscriptions/checkout
+Logout	Invalidate refresh token in DB/Redis
+Account deletion	DELETE /users/me → cascade soft delete + 30-day purge job
+🏛️ 2. Backend Architecture (Textual Diagram)
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          CLIENT LAYER                                        │
+│         React Native (Expo) — iOS / Android / Web                            │
+│    REST API calls  ──────────────  WebSocket (Socket.io)                     │
+└────────────────────────┬─────────────────────┬──────────────────────────────┘
+                         │ HTTPS                │ WSS
+                         ▼                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         API GATEWAY / LOAD BALANCER                          │
+│                  Nginx (rate limiting, SSL termination)                       │
+│              OR  AWS API Gateway + ALB for managed solution                  │
+└───────────────┬─────────────────────────────────────────────────────────────┘
+                │
+┌───────────────▼─────────────────────────────────────────────────────────────┐
+│                         APPLICATION TIER                                     │
+│                                                                              │
+│   ┌──────────────────────────────────────────────────────────────────────┐  │
+│   │              NestJS API Server (Node.js / TypeScript)                │  │
+│   │                                                                      │  │
+│   │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────────┐   │  │
+│   │  │  Auth    │  │ Users /  │  │Discover/ │  │  Messages /      │   │  │
+│   │  │  Module  │  │ Profiles │  │ Matching │  │  Conversations   │   │  │
+│   │  └──────────┘  └──────────┘  └──────────┘  └──────────────────┘   │  │
+│   │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────────┐   │  │
+│   │  │  Posts / │  │  Admin / │  │  Media / │  │  Subscriptions / │   │  │
+│   │  │  Feed    │  │  Reports │  │  Uploads │  │  Payments        │   │  │
+│   │  └──────────┘  └──────────┘  └──────────┘  └──────────────────┘   │  │
+│   │                                                                      │  │
+│   │  ┌─────────────────────────────────────────────────────────────┐   │  │
+│   │  │           Socket.io Gateway (WebSocket Module)               │   │  │
+│   │  │   events: message, typing, read-receipt, match, presence    │   │  │
+│   │  └─────────────────────────────────────────────────────────────┘   │  │
+│   └──────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+│   ┌────────────────────────────┐   ┌────────────────────────────────────┐   │
+│   │   BullMQ Worker Processes  │   │    Cron / Scheduled Jobs           │   │
+│   │  - Notification dispatch   │   │  - Premium expiry check            │   │
+│   │  - Match score recalc      │   │  - Account purge (30-day delete)   │   │
+│   │  - Media processing        │   │  - Stale profile deactivation      │   │
+│   └────────────────────────────┘   └────────────────────────────────────┘   │
+└──────────────────┬──────────────────────────┬──────────────────────────────┘
+                   │                          │
+       ┌───────────▼──────────┐   ┌──────────▼───────────────────────────────┐
+       │   PostgreSQL 16      │   │           Redis 7 (Cluster)               │
+       │   + PostGIS          │   │                                           │
+       │   (Primary DB)       │   │  • JWT blacklist / refresh token store   │
+       │                      │   │  • API response cache (profile cards)    │
+       │   Read Replicas (2x) │   │  • Rate limiting counters                │
+       │   for analytics,     │   │  • Socket.io adapter (pub/sub)           │
+       │   feed, reporting    │   │  • BullMQ job queues                     │
+       └──────────────────────┘   │  • Online presence tracking              │
+                                  │  • OTP storage (TTL 5 min)               │
+                                  └──────────────────────────────────────────┘
+       ┌──────────────────────────────────────────────────────────────────────┐
+       │                      MEDIA STORAGE TIER                              │
+       │   AWS S3 / Cloudflare R2  (profile photos, post media)               │
+       │   CloudFront CDN  (image delivery, edge caching)                    │
+       │   Sharp via Lambda  (image resize / thumbnail generation)            │
+       └──────────────────────────────────────────────────────────────────────┘
+       ┌──────────────────────────────────────────────────────────────────────┐
+       │                      OBSERVABILITY TIER                              │
+       │   Pino (structured logging) → Loki / CloudWatch                     │
+       │   OpenTelemetry → Jaeger (distributed tracing)                      │
+       │   Prometheus + Grafana (metrics dashboards)                         │
+       │   Sentry (error tracking, crash reports)                            │
+       └──────────────────────────────────────────────────────────────────────┘
+
+🧰 3. Tech Stack Selection & Justification
+Backend Framework — NestJS (Node.js + TypeScript)
+Why NestJS	Reasoning
+Modular architecture	Each domain (auth, users, matches, chat) is an isolated NestJS module — critical for team scale
+TypeScript-first	Matches frontend language, shared type contracts possible
+Dependency injection	Testable, SOLID services out of the box
+Ecosystem maturity	First-class support for Socket.io, BullMQ, Passport, TypeORM/Prisma, Swagger
+Guards & Interceptors	JWT guards, role guards, rate limit guards are native patterns
+Widely adopted for apps like this	Production use at Roblox, Adidas, Autodesk
+Why not Express? Too barebones — requires manual architecture decisions at every layer. At scale, inconsistency creeps in.
+
+Why not Python/FastAPI? Node.js event loop is superior for WebSocket-heavy apps. Shared TypeScript types with the RN frontend is a significant DX win.
+
+Database — PostgreSQL 16 + PostGIS
+Why PostgreSQL	Reasoning
+ACID transactions	Match creation, payment processing, account deletion need guaranteed consistency
+PostGIS extension	Native geo-spatial queries for find profiles within X km — essential for dating apps
+JSONB columns	Future-ready for flexible preference fields without schema migrations
+Full-text search	Native tsvector for conversation search
+Row-level security	Per-row privacy enforcement possible at DB level
+Mature tooling	pgAdmin, pgBadger, pg_stat_statements for performance insight
+Why not MongoDB? Relational integrity is non-negotiable: matches reference two users, messages reference conversations, blocks reference users. MongoDB's lack of joins makes complex queries expensive and inconsistent.
+
+Why not MySQL? PostGIS support and JSONB are significantly more capable in PostgreSQL.
+
+Cache / Real-Time — Redis 7 (Cluster Mode)
+OTP storage with TTL (auto-expiry, no cron needed)
+JWT refresh token store + blacklist for logout
+Rate limiting buckets per IP + per user
+Socket.io adapter for horizontal WebSocket scaling across multiple API pods
+Online presence (SETEX user:online:{id} 30 "1" — refreshed on heartbeat)
+BullMQ job queue backing store (match notifications, media processing)
+Profile card cache (invalidated on profile update)
+Real-Time — Socket.io
+Battle-tested for chat applications (WhatsApp Web level usage)
+Automatic fallback from WebSocket → long-polling (important for unstable mobile connections)
+Room-based architecture maps perfectly to conversations
+First-class NestJS Gateway support
+ORM — Prisma
+Type-safe schema → generated TypeScript client (zero SQL injection risk at ORM layer)
+Migration system with prisma migrate (version-controlled schema changes)
+Excellent PostgreSQL + PostGIS support
+Schema-as-code approach matches professional team workflows
+Auth — JWT (access + refresh token rotation)
+Access token: 15 min TTL, stateless verification
+Refresh token: 30 day TTL, stored in refresh_tokens table (allows remote logout from all devices)
+Refresh token rotation: on each use, old token revoked, new one issued
+Phone OTP: 6-digit (upgraded from UI's 4-digit for security), stored in Redis with 5-min TTL, max 3 attempts
+Media — AWS S3 + CloudFront CDN
+Profile photos, post images/videos uploaded via presigned S3 URLs (client uploads directly — never through API server)
+Sharp running in AWS Lambda processes images: resize, compress, generate thumbnails
+CloudFront CDN delivers media at edge — critical for global dating app performance
+Videos: S3 → AWS Elemental MediaConvert for transcoding
+Message Queue — BullMQ
+Match found → queue push notification job
+Post published → queue feed fanout job
+Account deleted → queue data purge job (30-day delay)
+Premium expired → queue downgrade job
+Media uploaded → queue Sharp processing job
+API Style — REST (not GraphQL)
+Why REST:
+
+Mobile apps with fixed screens map cleanly to REST resources
+HTTP caching (ETags, Cache-Control) works out of the box — critical for profile card caching
+Rate limiting is simpler (per route per user)
+Swagger/OpenAPI generation is first-class in NestJS REST
+No over-fetching risk at our scale — each screen has a purpose-built endpoint
+Why not GraphQL: N+1 query risk without DataLoader; increased complexity for mobile team; harder to rate-limit per operation; overkill for a well-defined mobile app UI.
+
+🗄️ 4. Database Schema (Detailed)
+-- ============================================================
+-- EXTENSIONS
+-- ============================================================
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "postgis";
+CREATE EXTENSION IF NOT EXISTS "pg_trgm"; -- for fuzzy text search
+
+-- ============================================================
+-- ENUMS
+-- ============================================================
+CREATE TYPE account_status     AS ENUM ('active', 'inactive', 'suspended', 'deleted', 'pending_verification');
+CREATE TYPE subscription_tier  AS ENUM ('free', 'premium', 'premium_plus');
+CREATE TYPE gender_type        AS ENUM ('man', 'woman', 'non_binary', 'prefer_not_to_say', 'other');
+CREATE TYPE orientation_type   AS ENUM ('straight', 'gay', 'lesbian', 'bisexual', 'pansexual', 'asexual', 'queer');
+CREATE TYPE relationship_goal  AS ENUM ('serious', 'casual', 'friendship', 'not_sure');
+CREATE TYPE interested_in_type AS ENUM ('men', 'women', 'non_binary', 'everyone');
+CREATE TYPE visibility_type    AS ENUM ('public', 'private', 'matches_only');
+CREATE TYPE swipe_action       AS ENUM ('like', 'pass', 'super_like');
+CREATE TYPE match_status       AS ENUM ('active', 'unmatched', 'blocked');
+CREATE TYPE message_type       AS ENUM ('text', 'image', 'video', 'audio', 'gif', 'system');
+CREATE TYPE message_status     AS ENUM ('sent', 'delivered', 'read');
+CREATE TYPE post_visibility    AS ENUM ('public', 'private', 'matches_only');
+CREATE TYPE mood_type          AS ENUM ('lonely', 'happy', 'stressed', 'heartbroken', 'flirty');
+CREATE TYPE report_reason      AS ENUM ('spam', 'inappropriate', 'harassment', 'fake_profile', 'underage', 'other');
+CREATE TYPE media_purpose      AS ENUM ('profile_photo', 'post_image', 'post_video', 'message_attachment');
+CREATE TYPE auth_provider      AS ENUM ('email', 'phone', 'google', 'apple');
+CREATE TYPE notification_type  AS ENUM ('match', 'message', 'like', 'super_like', 'profile_view', 'system');
+
+-- ============================================================
+-- CORE USERS TABLE
+-- ============================================================
+CREATE TABLE users (
+    id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    display_name        VARCHAR(50)       NOT NULL,
+    birth_date          DATE              NOT NULL, -- never store age, calculate it
+    email               CITEXT            UNIQUE,   -- case-insensitive email
+    phone               VARCHAR(20)       UNIQUE,
+    phone_country_code  VARCHAR(5),
+    auth_provider       auth_provider     NOT NULL DEFAULT 'email',
+    password_hash       TEXT,                       -- NULL for phone-only auth
+    account_status      account_status    NOT NULL DEFAULT 'pending_verification',
+    subscription_tier   subscription_tier NOT NULL DEFAULT 'free',
+    is_email_verified   BOOLEAN           NOT NULL DEFAULT FALSE,
+    is_phone_verified   BOOLEAN           NOT NULL DEFAULT FALSE,
+    is_verified         BOOLEAN           NOT NULL DEFAULT FALSE, -- identity verified (manual or ID check)
+    is_admin            BOOLEAN           NOT NULL DEFAULT FALSE,
+    setup_completed     BOOLEAN           NOT NULL DEFAULT FALSE, -- all 8 profile steps done
+    setup_step          SMALLINT          NOT NULL DEFAULT 0,     -- which step they're on
+    last_active_at      TIMESTAMPTZ,
+    created_at          TIMESTAMPTZ       NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ       NOT NULL DEFAULT NOW(),
+    deleted_at          TIMESTAMPTZ,                              -- soft delete timestamp
+    purge_at            TIMESTAMPTZ,                              -- scheduled hard delete (30 days after deleted_at)
+    CONSTRAINT chk_email_or_phone CHECK (email IS NOT NULL OR phone IS NOT NULL),
+    CONSTRAINT chk_age CHECK (birth_date <= NOW() - INTERVAL '18 years') -- 18+ enforcement
+);
+
+-- ============================================================
+-- USER PROFILES (extended, separate table for clean separation)
+-- ============================================================
+CREATE TABLE user_profiles (
+    user_id         UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    bio             VARCHAR(500),
+    gender          gender_type,
+    orientation     orientation_type,
+    relationship_goal relationship_goal,
+    visibility      visibility_type   NOT NULL DEFAULT 'public',
+    current_mood    mood_type,
+    location        GEOGRAPHY(Point, 4326),       -- PostGIS point (lng, lat)
+    location_city   VARCHAR(100),                 -- human-readable city name
+    location_country VARCHAR(100),
+    max_distance_km SMALLINT          NOT NULL DEFAULT 50,
+    show_distance   BOOLEAN           NOT NULL DEFAULT TRUE,
+    show_age        BOOLEAN           NOT NULL DEFAULT TRUE,
+    avatar_media_id UUID,                         -- FK to user_media (set after media table created)
+    updated_at      TIMESTAMPTZ       NOT NULL DEFAULT NOW()
+);
+
+-- ============================================================
+-- USER PREFERENCES (who they want to see)
+-- ============================================================
+CREATE TABLE user_preferences (
+    user_id           UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    interested_in     interested_in_type[] NOT NULL DEFAULT '{}',
+    age_min           SMALLINT NOT NULL DEFAULT 18,
+    age_max           SMALLINT NOT NULL DEFAULT 45,
+    CONSTRAINT chk_age_range CHECK (age_min >= 18 AND age_max >= age_min)
+);
+
+-- ============================================================
+-- USER LANGUAGES (junction)
+-- ============================================================
+CREATE TABLE user_languages (
+    user_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    language VARCHAR(50) NOT NULL,
+    PRIMARY KEY (user_id, language)
+);
+
+-- ============================================================
+-- USER INTERESTS (junction)
+-- ============================================================
+CREATE TABLE user_interests (
+    user_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    interest VARCHAR(50) NOT NULL,
+    PRIMARY KEY (user_id, interest)
+);
+
+-- ============================================================
+-- USER MEDIA (photos and videos — profile + posts)
+-- ============================================================
+CREATE TABLE user_media (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    purpose         media_purpose NOT NULL,
+    s3_key          TEXT NOT NULL,                -- raw S3 object key
+    cdn_url         TEXT NOT NULL,                -- CloudFront URL (served to client)
+    thumbnail_url   TEXT,                         -- for videos
+    mime_type       VARCHAR(50) NOT NULL,
+    file_size_bytes BIGINT NOT NULL,
+    width_px        INTEGER,
+    height_px       INTEGER,
+    duration_secs   INTEGER,                      -- for videos
+    display_order   SMALLINT NOT NULL DEFAULT 0, -- order within profile gallery
+    is_primary      BOOLEAN NOT NULL DEFAULT FALSE,
+    processing_done BOOLEAN NOT NULL DEFAULT FALSE, -- Lambda processing complete
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Add FK after user_media is created
+ALTER TABLE user_profiles ADD CONSTRAINT fk_avatar FOREIGN KEY (avatar_media_id) REFERENCES user_media(id) ON DELETE SET NULL;
+
+-- ============================================================
+-- USER STATS (materialized counters — avoid expensive COUNT queries)
+-- ============================================================
+CREATE TABLE user_stats (
+    user_id         UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    total_matches   INTEGER NOT NULL DEFAULT 0,
+    total_likes_received INTEGER NOT NULL DEFAULT 0,
+    total_chats     INTEGER NOT NULL DEFAULT 0,
+    profile_views   INTEGER NOT NULL DEFAULT 0,
+    activity_score  NUMERIC(5,2) NOT NULL DEFAULT 0.00, -- for matching algorithm
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ============================================================
+-- REFRESH TOKENS (for auth)
+-- ============================================================
+CREATE TABLE refresh_tokens (
+    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash  TEXT NOT NULL UNIQUE, -- bcrypt hash of token
+    device_id   VARCHAR(100),         -- track per-device sessions
+    device_name VARCHAR(100),
+    ip_address  INET,
+    user_agent  TEXT,
+    expires_at  TIMESTAMPTZ NOT NULL,
+    revoked_at  TIMESTAMPTZ,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ============================================================
+-- SWIPES (the core swiping mechanic)
+-- ============================================================
+CREATE TABLE swipes (
+    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    swiper_id   UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    swiped_id   UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    action      swipe_action NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_swipe UNIQUE (swiper_id, swiped_id)
+);
+
+-- ============================================================
+-- MATCHES (created when mutual like detected)
+-- ============================================================
+CREATE TABLE matches (
+    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_a_id   UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, -- always lower UUID alphabetically
+    user_b_id   UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, -- always higher UUID alphabetically
+    status      match_status NOT NULL DEFAULT 'active',
+    matched_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    unmatched_at TIMESTAMPTZ,
+    unmatched_by UUID REFERENCES users(id),
+    CONSTRAINT uq_match UNIQUE (user_a_id, user_b_id),
+    CONSTRAINT chk_match_order CHECK (user_a_id < user_b_id) -- prevents duplicate (A,B) and (B,A)
+);
+
+-- ============================================================
+-- CONVERSATIONS (one per match, but also supports group future)
+-- ============================================================
+CREATE TABLE conversations (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    match_id        UUID UNIQUE REFERENCES matches(id) ON DELETE CASCADE,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_message_at TIMESTAMPTZ
+);
+
+-- ============================================================
+-- CONVERSATION PARTICIPANTS (normalized)
+-- ============================================================
+CREATE TABLE conversation_participants (
+    conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    joined_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_read_at    TIMESTAMPTZ,                      -- for unread count calculation
+    is_archived     BOOLEAN NOT NULL DEFAULT FALSE,
+    PRIMARY KEY (conversation_id, user_id)
+);
+
+-- ============================================================
+-- MESSAGES
+-- ============================================================
+CREATE TABLE messages (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    sender_id       UUID NOT NULL REFERENCES users(id) ON DELETE SET NULL,
+    message_type    message_type NOT NULL DEFAULT 'text',
+    content         TEXT,                             -- NULL for media messages
+    media_id        UUID REFERENCES user_media(id) ON DELETE SET NULL,
+    status          message_status NOT NULL DEFAULT 'sent',
+    reply_to_id     UUID REFERENCES messages(id) ON DELETE SET NULL,
+    is_deleted      BOOLEAN NOT NULL DEFAULT FALSE,
+    deleted_at      TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_content_or_media CHECK (content IS NOT NULL OR media_id IS NOT NULL),
+    CONSTRAINT chk_content_length CHECK (char_length(content) <= 500)
+);
+
+-- ============================================================
+-- POSTS (upload tab — photo/video posts with mood + privacy)
+-- ============================================================
+CREATE TABLE posts (
+    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    caption     VARCHAR(2200),
+    mood        mood_type,
+    visibility  post_visibility NOT NULL DEFAULT 'public',
+    is_deleted  BOOLEAN NOT NULL DEFAULT FALSE,
+    deleted_at  TIMESTAMPTZ,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ============================================================
+-- POST MEDIA (a post can have multiple media items)
+-- ============================================================
+CREATE TABLE post_media (
+    post_id         UUID NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+    media_id        UUID NOT NULL REFERENCES user_media(id) ON DELETE CASCADE,
+    display_order   SMALLINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (post_id, media_id)
+);
+
+-- ============================================================
+-- BLOCKS
+-- ============================================================
+CREATE TABLE blocks (
+    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    blocker_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    blocked_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    reason      VARCHAR(500),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_block UNIQUE (blocker_id, blocked_id),
+    CONSTRAINT chk_no_self_block CHECK (blocker_id != blocked_id)
+);
+
+-- ============================================================
+-- REPORTS (abuse reporting)
+-- ============================================================
+CREATE TABLE reports (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    reporter_id     UUID NOT NULL REFERENCES users(id) ON DELETE SET NULL,
+    reported_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    reported_post_id UUID REFERENCES posts(id) ON DELETE SET NULL,
+    reason          report_reason NOT NULL,
+    description     VARCHAR(1000),
+    status          VARCHAR(20) NOT NULL DEFAULT 'pending', -- pending, reviewed, dismissed, actioned
+    reviewed_by     UUID REFERENCES users(id) ON DELETE SET NULL, -- admin user
+    reviewed_at     TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ============================================================
+-- SUBSCRIPTIONS (premium payment tracking)
+-- ============================================================
+CREATE TABLE subscriptions (
+    id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id             UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    tier                subscription_tier NOT NULL,
+    payment_provider    VARCHAR(50) NOT NULL, -- 'stripe', 'apple_iap', 'google_play'
+    provider_sub_id     TEXT UNIQUE,          -- external subscription ID from provider
+    status              VARCHAR(20) NOT NULL, -- 'active', 'cancelled', 'expired', 'past_due'
+    current_period_start TIMESTAMPTZ NOT NULL,
+    current_period_end  TIMESTAMPTZ NOT NULL,
+    cancelled_at        TIMESTAMPTZ,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ============================================================
+-- NOTIFICATIONS
+-- ============================================================
+CREATE TABLE notifications (
+    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    type        notification_type NOT NULL,
+    title       VARCHAR(100) NOT NULL,
+    body        VARCHAR(500) NOT NULL,
+    data        JSONB,                          -- flexible payload (match_id, user_id, etc.)
+    is_read     BOOLEAN NOT NULL DEFAULT FALSE,
+    read_at     TIMESTAMPTZ,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ============================================================
+-- AUDIT LOG (admin + compliance)
+-- ============================================================
+CREATE TABLE audit_logs (
+    id          BIGSERIAL PRIMARY KEY,
+    user_id     UUID REFERENCES users(id) ON DELETE SET NULL,
+    admin_id    UUID REFERENCES users(id) ON DELETE SET NULL,
+    action      VARCHAR(100) NOT NULL,         -- 'account.delete', 'block.create', etc.
+    resource    VARCHAR(50),                   -- 'user', 'post', 'match'
+    resource_id UUID,
+    old_value   JSONB,
+    new_value   JSONB,
+    ip_address  INET,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ============================================================
+-- INDEXES (critical for performance)
+-- ============================================================
+
+-- User lookups
+CREATE INDEX idx_users_email    ON users(email) WHERE deleted_at IS NULL;
+CREATE INDEX idx_users_phone    ON users(phone) WHERE deleted_at IS NULL;
+CREATE INDEX idx_users_status   ON users(account_status) WHERE deleted_at IS NULL;
+
+-- Geo-spatial index (most important for dating app performance)
+CREATE INDEX idx_profiles_location ON user_profiles USING GIST(location);
+
+-- Swipe lookups
+CREATE INDEX idx_swipes_swiper    ON swipes(swiper_id);
+CREATE INDEX idx_swipes_swiped    ON swipes(swiped_id);
+CREATE INDEX idx_swipes_created   ON swipes(created_at);
+
+-- Match lookups
+CREATE INDEX idx_matches_user_a   ON matches(user_a_id) WHERE status = 'active';
+CREATE INDEX idx_matches_user_b   ON matches(user_b_id) WHERE status = 'active';
+
+-- Messages (most frequently queried table)
+CREATE INDEX idx_messages_conv    ON messages(conversation_id, created_at DESC) WHERE is_deleted = FALSE;
+CREATE INDEX idx_messages_sender  ON messages(sender_id);
+
+-- Posts feed
+CREATE INDEX idx_posts_user       ON posts(user_id, created_at DESC) WHERE is_deleted = FALSE;
+CREATE INDEX idx_posts_visibility ON posts(visibility, created_at DESC) WHERE is_deleted = FALSE;
+CREATE INDEX idx_posts_mood       ON posts(mood) WHERE is_deleted = FALSE;
+
+-- Blocks (checked on every profile load)
+CREATE INDEX idx_blocks_blocker   ON blocks(blocker_id);
+CREATE INDEX idx_blocks_blocked   ON blocks(blocked_id);
+
+-- Notifications
+CREATE INDEX idx_notifs_user_unread ON notifications(user_id, created_at DESC) WHERE is_read = FALSE;
+
+-- Refresh tokens
+CREATE INDEX idx_refresh_user     ON refresh_tokens(user_id) WHERE revoked_at IS NULL;
+
+-- Conversations
+CREATE INDEX idx_conv_last_msg    ON conversations(last_message_at DESC NULLS LAST);
+
+-- Full-text search on profiles (name, bio)
+CREATE INDEX idx_profile_fts ON users USING GIN(to_tsvector('english', display_name));
+
+-- Partial index: only active, setup-complete users (used in discover query)
+CREATE INDEX idx_users_discoverable ON users(id) 
+    WHERE account_status = 'active' AND setup_completed = TRUE AND deleted_at IS NULL;
+
+🔐 5. Authentication & Authorization Flow
+5.1 Email Registration + OTP
+Client                              API Server                       Redis / DB
+  │                                      │                               │
+  │── POST /auth/register/email ────────►│                               │
+  │   { email, password, name, dob }     │── validate email uniqueness ─►│
+  │                                      │◄─ OK ─────────────────────────│
+  │                                      │── hash password (bcrypt 12)   │
+  │                                      │── INSERT user (status=pending)│
+  │                                      │── generate 6-digit OTP ──────►│ SETEX otp:{userId} 300 "123456"
+  │                                      │── send email via SES          │
+  │◄── 201 { userId, message } ──────────│                               │
+  │                                      │                               │
+  │── POST /auth/otp/verify ────────────►│                               │
+  │   { userId, otp }                    │── GET otp:{userId} ──────────►│
+  │                                      │◄─ "123456" ───────────────────│
+  │                                      │── compare, check attempts     │
+  │                                      │── UPDATE user status=active   │
+  │                                      │── DEL otp:{userId} ──────────►│
+  │                                      │── generate tokens:            │
+  │                                      │   access_token (15m JWT)      │
+  │                                      │   refresh_token (UUID, 30d)   │
+  │                                      │── store refresh_token hash ──►│ INSERT refresh_tokens
+  │◄── 200 { access_token, refresh_token}│                               │
+
+5.2 JWT Token Structure
+// Access Token Payload (JWT, 15 min)
+{
+  sub: "user-uuid",
+  email: "user@example.com",
+  role: "user",           // "user" | "admin"
+  tier: "premium",        // "free" | "premium" | "premium_plus"
+  status: "active",
+  iat: 1700000000,
+  exp: 1700000900         // 15 min
+}
+
+// Refresh Token: opaque UUID stored in DB, hashed
+// Client stores in SecureStore (Expo) or Keychain (iOS) / EncryptedSharedPrefs (Android)
+
+5.3 Token Refresh with Rotation
+Client                          API Server                        DB
+  │                                 │                              │
+  │── POST /auth/refresh ──────────►│                              │
+  │   { refresh_token: "uuid..." }  │── find by hash ────────────►│
+  │                                 │◄─ token record ──────────────│
+  │                                 │── check: not revoked,        │
+  │                                 │         not expired          │
+  │                                 │── REVOKE old token ─────────►│ UPDATE revoked_at=NOW()
+  │                                 │── generate new refresh token │
+  │                                 │── INSERT new token ─────────►│
+  │                                 │── generate new access token  │
+  │◄── 200 { access_token,          │                              │
+  │          refresh_token } ───────│                              │
+
+5.4 Authorization Guards (NestJS)
+// Route protection layers:
+@UseGuards(JwtAuthGuard)          // verifies JWT, attaches user to request
+@UseGuards(AccountActiveGuard)    // checks user.status === 'active'
+@UseGuards(SetupCompleteGuard)    // blocks API if setup_completed === false
+@UseGuards(PremiumGuard)          // restricts premium-only endpoints
+@UseGuards(RolesGuard)            // admin-only routes
+@UseGuards(ThrottlerGuard)        // per-user rate limiting via Redis
+
+// Example: Profile discovery is rate-limited, requires active account + completed setup
+@Get('discover')
+@UseGuards(JwtAuthGuard, AccountActiveGuard, SetupCompleteGuard)
+@Throttle({ default: { limit: 100, ttl: 60000 } }) // 100 req/min
+async getDiscoverProfiles() { ... }
+
+💘 6. Matching & Nearby Algorithm
+6.1 Discover Feed Query Logic
+-- The core discovery query
+-- Returns profiles not yet swiped, within distance, matching preferences
+
+SELECT
+    u.id,
+    u.display_name,
+    DATE_PART('year', AGE(u.birth_date)) AS age,
+    up.bio,
+    up.current_mood,
+    up.location_city,
+    up.is_verified,
+    ST_Distance(
+        up.location::geography,
+        ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography
+    ) / 1000 AS distance_km,
+    um.cdn_url AS avatar_url,
+    ARRAY_AGG(DISTINCT ui.interest) AS interests,
+    us.activity_score
+FROM users u
+JOIN user_profiles up ON up.user_id = u.id
+JOIN user_preferences upr ON upr.user_id = u.id
+LEFT JOIN user_media um ON um.id = up.avatar_media_id
+LEFT JOIN user_interests ui ON ui.user_id = u.id
+LEFT JOIN user_stats us ON us.user_id = u.id
+WHERE
+    -- Basic eligibility
+    u.account_status = 'active'
+    AND u.setup_completed = TRUE
+    AND u.deleted_at IS NULL
+    AND u.id != :currentUserId
+
+    -- Distance filter
+    AND ST_DWithin(
+        up.location::geography,
+        ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography,
+        :maxDistanceMeters
+    )
+
+    -- Age preference filter
+    AND DATE_PART('year', AGE(u.birth_date))
+        BETWEEN :ageMin AND :ageMax
+
+    -- Gender/interest preference filter
+    AND (
+        :interestedIn = 'everyone'
+        OR up.gender::text = ANY(:interestedInArray)
+    )
+
+    -- Exclude already-swiped profiles
+    AND u.id NOT IN (
+        SELECT swiped_id FROM swipes WHERE swiper_id = :currentUserId
+    )
+
+    -- Exclude blocked (in both directions)
+    AND u.id NOT IN (
+        SELECT blocked_id FROM blocks WHERE blocker_id = :currentUserId
+        UNION
+        SELECT blocker_id FROM blocks WHERE blocked_id = :currentUserId
+    )
+
+    -- Public profiles OR private profiles that are already matches
+    AND (
+        up.visibility = 'public'
+        OR EXISTS (
+            SELECT 1 FROM matches m
+            WHERE m.status = 'active'
+            AND (
+                (m.user_a_id = :currentUserId AND m.user_b_id = u.id) OR
+                (m.user_b_id = :currentUserId AND m.user_a_id = u.id)
+            )
+        )
+    )
+GROUP BY u.id, up.bio, up.current_mood, up.location_city, up.is_verified,
+         up.location, um.cdn_url, us.activity_score
+ORDER BY
+    -- Multi-factor ranking:
+    (us.activity_score * 0.4)                -- 40%: active users rank higher
+    + (1.0 / (distance_km + 1.0) * 100 * 0.35) -- 35%: proximity boost
+    + (RANDOM() * 0.25)                      -- 25%: controlled randomness (prevents filter bubbles)
+    DESC
+LIMIT :limit
+OFFSET :offset;
+
+6.2 Match Detection (on every Like swipe)
+// MatchingService.processSwipe()
+async processSwipe(swiperId: string, swipedId: string, action: SwipeAction) {
+  // 1. Record the swipe (upsert-safe)
+  await this.prisma.swipe.create({
+    data: { swiperId, swipedId, action }
+  });
+
+  if (action !== SwipeAction.LIKE && action !== SwipeAction.SUPER_LIKE) return;
+
+  // 2. Check for mutual like (reverse swipe exists?)
+  const reverseSwipe = await this.prisma.swipe.findUnique({
+    where: { swiperId_swipedId: { swiperId: swipedId, swipedId: swiperId } },
+  });
+
+  if (!reverseSwipe || reverseSwipe.action === SwipeAction.PASS) return;
+
+  // 3. It's a match! Create match + conversation atomically
+  const [userA, userB] = [swiperId, swipedId].sort(); // enforce ordering constraint
+
+  const match = await this.prisma.$transaction(async (tx) => {
+    const match = await tx.match.create({
+      data: {
+        userAId: userA,
+        userBId: userB,
+        status: MatchStatus.ACTIVE,
+      },
+    });
+
+    const conversation = await tx.conversation.create({
+      data: {
+        matchId: match.id,
+        participants: {
+          create: [
+            { userId: swiperId },
+            { userId: swipedId },
+          ],
+        },
+      },
+    });
+
+    // Increment match counter for both users (denormalized stat)
+    await tx.userStats.updateMany({
+      where: { userId: { in: [swiperId, swipedId] } },
+      data: { totalMatches: { increment: 1 } },
+    });
+
+    return { match, conversation };
+  });
+
+  // 4. Fire match event (WebSocket + push notification via BullMQ)
+  this.eventEmitter.emit('match.created', {
+    matchId: match.id,
+    userIds: [swiperId, swipedId],
+  });
+
+  return match;
+}
+
+6.3 Activity Score Calculation
+The activity_score drives ranking in the discover feed. It's recalculated hourly via BullMQ:
+
+// Score formula (0-100 scale)
+activityScore = (
+  (daysSinceLastActive <= 1 ? 40 : daysSinceLastActive <= 7 ? 20 : 5)  // recency
+  + (Math.min(profileCompleteness, 100) * 0.20)                         // profile completeness %
+  + (Math.min(totalLikesReceived / 10, 20))                             // social proof
+  + (isVerified ? 10 : 0)                                               // verification bonus
+  + (subscriptionTier === 'premium' ? 10 : 0)                           // premium boost
+)
+
+📡 7. API Design with Sample Payloads
+Base Configuration
+Base URL:     https://api.lovrhub.com/v1
+Auth Header:  Authorization: Bearer <access_token>
+Content-Type: application/json
+Rate Limits:  100 req/min (general), 10 req/min (auth), 30/min (swipes)
+
+7.1 Auth Endpoints
+POST /v1/auth/register/email
+Request:
+{
+  "email": "alex@example.com",
+  "password": "SecurePass123!",
+  "displayName": "Alex",
+  "birthDate": "1998-03-15"
+}
+Response 201:
+{
+  "userId": "550e8400-e29b-41d4-a716-446655440000",
+  "message": "Verification code sent to your email"
+}
+
+──────────────────────────────────────────────────────────────
+
+POST /v1/auth/register/phone
+Request:
+{
+  "phone": "5551234567",
+  "countryCode": "+1",
+  "displayName": "Alex",
+  "birthDate": "1998-03-15"
+}
+Response 201:
+{
+  "userId": "550e8400-...",
+  "message": "Verification code sent via SMS"
+}
+
+──────────────────────────────────────────────────────────────
+
+POST /v1/auth/otp/verify
+Request:
+{
+  "userId": "550e8400-...",
+  "otp": "482916"
+}
+Response 200:
+{
+  "accessToken": "eyJhbGc...",
+  "refreshToken": "7f3d1a2b...",
+  "user": {
+    "id": "550e8400-...",
+    "displayName": "Alex",
+    "setupCompleted": false,
+    "setupStep": 0,
+    "subscriptionTier": "free"
+  }
+}
+
+──────────────────────────────────────────────────────────────
+
+POST /v1/auth/login
+Request:
+{ "email": "alex@example.com", "password": "SecurePass123!" }
+Response 200:
+{
+  "accessToken": "eyJhbGc...",
+  "refreshToken": "7f3d1a2b...",
+  "user": {
+    "id": "550e8400-...",
+    "displayName": "Alex",
+    "setupCompleted": true,
+    "subscriptionTier": "free",
+    "accountStatus": "active"
+  }
+}
+
+──────────────────────────────────────────────────────────────
+
+POST /v1/auth/refresh
+Request: { "refreshToken": "7f3d1a2b..." }
+Response 200: { "accessToken": "eyJhbGc...", "refreshToken": "newToken..." }
+
+POST /v1/auth/logout
+Request: { "refreshToken": "7f3d1a2b..." }
+Response 204: (no body)
+
+7.2 Profile Setup Endpoints
+PATCH /v1/users/me/profile
+Authorization: Bearer <token>
+Request:
+{
+  "step": "basic",
+  "displayName": "Alex Rivera",
+  "birthDate": "1998-03-15"
+}
+Response 200:
+{
+  "setupStep": 1,
+  "setupCompleted": false,
+  "profile": { "displayName": "Alex Rivera", "age": 27 }
+}
+
+──────────────────────────────────────────────────────────────
+
+PATCH /v1/users/me/profile  (step: gender)
+Request: { "step": "gender", "gender": "man" }
+
+PATCH /v1/users/me/profile  (step: orientation)
+Request: { "step": "orientation", "orientation": "straight" }
+
+PATCH /v1/users/me/profile  (step: interested_in)
+Request: { "step": "interested_in", "interestedIn": ["women", "non_binary"] }
+
+PATCH /v1/users/me/profile  (step: relationship)
+Request: { "step": "relationship", "relationshipGoal": "serious" }
+
+PATCH /v1/users/me/profile  (step: languages)
+Request: { "step": "languages", "languages": ["English", "Spanish"] }
+
+PATCH /v1/users/me/profile  (step: interests)
+Request: { "step": "interests", "interests": ["Travel", "Music", "Fitness"] }
+
+──────────────────────────────────────────────────────────────
+
+POST /v1/users/me/avatar
+Content-Type: multipart/form-data
+Body: file (image)
+Response 200:
+{
+  "mediaId": "abc123-...",
+  "cdnUrl": "https://cdn.lovrhub.com/profiles/abc123.webp",
+  "thumbnailUrl": "https://cdn.lovrhub.com/profiles/abc123_thumb.webp"
+}
+
+7.3 Discover & Matching
+GET /v1/discover?lat=40.7128&lng=-74.0060&limit=10&cursor=eyJvZmZzZXQiOjEwfQ
+Authorization: Bearer <token>
+Response 200:
+{
+  "profiles": [
+    {
+      "id": "user-uuid-1",
+      "displayName": "Jordan",
+      "age": 26,
+      "distance": "2.3 km",
+      "bio": "Adventure seeker 🌍",
+      "avatarUrl": "https://cdn.lovrhub.com/profiles/...",
+      "interests": ["Travel", "Music", "Yoga"],
+      "mood": "happy",
+      "isVerified": true,
+      "currentMood": "happy"
+    }
+  ],
+  "nextCursor": "eyJvZmZzZXQiOjIwfQ",
+  "hasMore": true
+}
+
+──────────────────────────────────────────────────────────────
+
+POST /v1/swipes
+Authorization: Bearer <token>
+Request:
+{
+  "swipedUserId": "user-uuid-1",
+  "action": "like"           // "like" | "pass" | "super_like"
+}
+Response 200:
+{
+  "swipeId": "swipe-uuid",
+  "isMatch": true,
+  "match": {
+    "id": "match-uuid",
+    "conversationId": "conv-uuid",
+    "matchedUser": {
+      "id": "user-uuid-1",
+      "displayName": "Jordan",
+      "avatarUrl": "https://cdn.lovrhub.com/profiles/..."
+    }
+  }
+}
+// isMatch: false → no match yet
+// isMatch: true → match created, conversation ready
+
+──────────────────────────────────────────────────────────────
+
+GET /v1/discover/explore?mood=happy&lat=40.71&lng=-74.00&limit=20
+Response 200:
+{
+  "mood": "happy",
+  "profiles": [ ...same shape as discover... ],
+  "nextCursor": "..."
+}
+
+7.4 Conversations & Messages
+GET /v1/conversations?filter=all&search=jordan&limit=20&cursor=...
+Response 200:
+{
+  "conversations": [
+    {
+      "id": "conv-uuid",
+      "matchId": "match-uuid",
+      "otherUser": {
+        "id": "user-uuid",
+        "displayName": "Jordan",
+        "avatarUrl": "https://cdn.lovrhub.com/...",
+        "isOnline": true,
+        "lastSeenAt": null
+      },
+      "lastMessage": {
+        "id": "msg-uuid",
+        "content": "Hey! How's it going?",
+        "senderId": "other-user-id",
+        "createdAt": "2026-04-02T10:30:00Z",
+        "status": "read"
+      },
+      "unreadCount": 0,
+      "currentMood": "happy"
+    }
+  ],
+  "nextCursor": "..."
+}
+
+──────────────────────────────────────────────────────────────
+
+GET /v1/conversations/:conversationId/messages?limit=30&before=msg-uuid
+Response 200:
+{
+  "messages": [
+    {
+      "id": "msg-uuid-1",
+      "content": "Hey! Just matched 🎉",
+      "messageType": "text",
+      "senderId": "user-uuid",
+      "status": "read",
+      "replyTo": null,
+      "createdAt": "2026-04-02T10:29:00Z"
+    },
+    {
+      "id": "msg-uuid-2",
+      "content": null,
+      "messageType": "image",
+      "mediaUrl": "https://cdn.lovrhub.com/messages/img.webp",
+      "senderId": "other-user-uuid",
+      "status": "delivered",
+      "createdAt": "2026-04-02T10:30:00Z"
+    }
+  ],
+  "hasMore": true,
+  "oldestCursor": "msg-uuid-1"
+}
+
+──────────────────────────────────────────────────────────────
+
+POST /v1/conversations/:conversationId/messages
+Request: { "content": "Hey! How's your day?", "messageType": "text" }
+Response 201:
+{
+  "id": "msg-uuid-new",
+  "content": "Hey! How's your day?",
+  "status": "sent",
+  "createdAt": "2026-04-02T10:31:00Z"
+}
+// Message also broadcast via WebSocket to other participant
+
+PATCH /v1/conversations/:conversationId/read
+Response 204: (marks all messages as read, broadcasts read receipt via WS)
+
+7.5 Posts / Upload
+POST /v1/media/presigned-url
+Request: { "fileName": "photo.jpg", "mimeType": "image/jpeg", "purpose": "post_image" }
+Response 200:
+{
+  "uploadUrl": "https://s3.us-east-1.amazonaws.com/lovrhub-media/...",
+  "mediaId": "media-uuid",
+  "expiresAt": "2026-04-02T10:46:00Z"
+}
+// Client uploads directly to S3 using this URL (PUT request)
+
+──────────────────────────────────────────────────────────────
+
+POST /v1/posts
+Request:
+{
+  "caption": "Golden hour hits different 🌅",
+  "mood": "happy",
+  "visibility": "public",
+  "mediaIds": ["media-uuid-1"]
+}
+Response 201:
+{
+  "id": "post-uuid",
+  "caption": "Golden hour hits different 🌅",
+  "mood": "happy",
+  "visibility": "public",
+  "media": [
+    { "cdnUrl": "https://cdn.lovrhub.com/posts/...", "order": 0 }
+  ],
+  "createdAt": "2026-04-02T10:31:00Z"
+}
+
+──────────────────────────────────────────────────────────────
+
+GET /v1/feed?lat=40.71&lng=-74.00&limit=20&cursor=...
+// Returns public posts from non-blocked users + private posts from matches
+Response 200:
+{
+  "posts": [
+    {
+      "id": "post-uuid",
+      "author": {
+        "id": "user-uuid",
+        "displayName": "Jordan",
+        "avatarUrl": "https://cdn.lovrhub.com/...",
+        "isVerified": true
+      },
+      "caption": "Golden hour hits different 🌅",
+      "mood": "happy",
+      "media": [...],
+      "visibility": "public",
+      "createdAt": "2026-04-02T10:00:00Z"
+    }
+  ],
+  "nextCursor": "..."
+}
+
+7.6 Social (Blocks & Reports)
+POST /v1/blocks
+Request: { "blockedUserId": "user-uuid" }
+Response 201: { "id": "block-uuid", "blockedAt": "2026-04-02T..." }
+// Side effects: invalidates any active match, removes from discover queue
+
+DELETE /v1/blocks/:userId
+Response 204
+
+GET /v1/blocks
+Response 200: { "blockedUsers": [{ "id": "...", "displayName": "..." }] }
+
+──────────────────────────────────────────────────────────────
+
+POST /v1/reports
+Request:
+{
+  "reportedUserId": "user-uuid",
+  "reason": "fake_profile",
+  "description": "This profile uses stock photos"
+}
+Response 201: { "id": "report-uuid", "status": "pending" }
+
+7.7 Account Management
+GET /v1/users/me
+Response 200:
+{
+  "id": "user-uuid",
+  "displayName": "Alex Rivera",
+  "age": 27,
+  "email": "alex@example.com",
+  "avatarUrl": "https://cdn.lovrhub.com/profiles/...",
+  "bio": "Adventure seeker 🌍",
+  "location": { "city": "New York", "country": "US" },
+  "isVerified": true,
+  "subscriptionTier": "free",
+  "accountStatus": "active",
+  "stats": {
+    "totalMatches": 42,
+    "totalChats": 18,
+    "totalLikesReceived": 127
+  },
+  "setupCompleted": true
+}
+
+──────────────────────────────────────────────────────────────
+
+PATCH /v1/users/me/location
+Request: { "lat": 40.7128, "lng": -74.0060 }
+Response 200: { "city": "New York", "country": "US" }
+// Called on app foreground — updates PostGIS location
+
+PATCH /v1/users/me/mood
+Request: { "mood": "happy" }
+Response 200: { "mood": "happy", "updatedAt": "..." }
+
+DELETE /v1/users/me          (soft delete — 30-day grace period)
+PATCH /v1/users/me/deactivate  (sets status=inactive, not discoverable)
+
+7.8 WebSocket Events (Socket.io)
+// Client connects with JWT
+const socket = io('wss://api.lovrhub.com', {
+  auth: { token: accessToken }
+});
+
+// JOIN conversation room (on chat screen open)
+socket.emit('conversation:join', { conversationId: 'conv-uuid' });
+
+// SEND message (alternative to REST, for real-time feel)
+socket.emit('message:send', {
+  conversationId: 'conv-uuid',
+  content: 'Hey!',
+  messageType: 'text'
+});
+
+// INCOMING EVENTS (server → client):
+socket.on('message:new', (data: {
+  conversationId: string;
+  message: Message;
+}) => { /* update chat UI */ });
+
+socket.on('message:status', (data: {
+  messageId: string;
+  status: 'delivered' | 'read';
+}) => { /* update read receipt */ });
+
+socket.on('typing:start', (data: {
+  conversationId: string;
+  userId: string;
+}) => { /* show typing indicator */ });
+
+socket.on('typing:stop', (data: {
+  conversationId: string;
+  userId: string;
+}) => { /* hide typing indicator */ });
+
+socket.on('match:new', (data: {
+  matchId: string;
+  conversationId: string;
+  user: { id: string; displayName: string; avatarUrl: string; }
+}) => { /* show match animation */ });
+
+socket.on('presence:update', (data: {
+  userId: string;
+  isOnline: boolean;
+  lastSeenAt: string | null;
+}) => { /* update online indicator */ });
+
+🚀 8. Deployment & Scaling Strategy
+8.1 Project Folder Structure (NestJS Clean Architecture)
+lovrhub-api/
+├── src/
+│   ├── modules/
+│   │   ├── auth/
+│   │   │   ├── auth.module.ts
+│   │   │   ├── auth.controller.ts
+│   │   │   ├── auth.service.ts
+│   │   │   ├── strategies/
+│   │   │   │   ├── jwt.strategy.ts
+│   │   │   │   └── refresh-token.strategy.ts
+│   │   │   ├── guards/
+│   │   │   │   ├── jwt-auth.guard.ts
+│   │   │   │   ├── account-active.guard.ts
+│   │   │   │   └── roles.guard.ts
+│   │   │   └── dto/
+│   │   │       ├── register-email.dto.ts
+│   │   │       ├── register-phone.dto.ts
+│   │   │       ├── verify-otp.dto.ts
+│   │   │       └── login.dto.ts
+│   │   ├── users/
+│   │   │   ├── users.module.ts
+│   │   │   ├── users.controller.ts
+│   │   │   ├── users.service.ts
+│   │   │   └── dto/
+│   │   ├── discover/
+│   │   │   ├── discover.module.ts
+│   │   │   ├── discover.controller.ts
+│   │   │   ├── discover.service.ts
+│   │   │   └── matching.service.ts
+│   │   ├── conversations/
+│   │   │   ├── conversations.module.ts
+│   │   │   ├── conversations.controller.ts
+│   │   │   ├── conversations.service.ts
+│   │   │   └── messages.service.ts
+│   │   ├── posts/
+│   │   │   ├── posts.module.ts
+│   │   │   ├── posts.controller.ts
+│   │   │   └── posts.service.ts
+│   │   ├── media/
+│   │   │   ├── media.module.ts
+│   │   │   ├── media.controller.ts
+│   │   │   └── s3.service.ts
+│   │   ├── blocks/
+│   │   ├── reports/
+│   │   ├── notifications/
+│   │   ├── subscriptions/
+│   │   └── admin/
+│   ├── gateways/
+│   │   └── chat/
+│   │       ├── chat.gateway.ts         ← Socket.io WebSocket gateway
+│   │       ├── presence.service.ts     ← Redis online tracking
+│   │       └── typing.service.ts
+│   ├── workers/
+│   │   ├── match-notification.worker.ts
+│   │   ├── media-processing.worker.ts
+│   │   ├── premium-expiry.worker.ts
+│   │   └── account-purge.worker.ts
+│   ├── common/
+│   │   ├── decorators/
+│   │   │   ├── current-user.decorator.ts
+│   │   │   └── roles.decorator.ts
+│   │   ├── filters/
+│   │   │   └── global-exception.filter.ts
+│   │   ├── interceptors/
+│   │   │   ├── response-transform.interceptor.ts
+│   │   │   └── audit-log.interceptor.ts
+│   │   ├── pipes/
+│   │   │   └── zod-validation.pipe.ts
+│   │   └── utils/
+│   │       ├── cursor-pagination.util.ts
+│   │       └── geo.util.ts
+│   ├── prisma/
+│   │   ├── prisma.module.ts
+│   │   ├── prisma.service.ts
+│   │   └── schema.prisma
+│   ├── config/
+│   │   ├── app.config.ts
+│   │   ├── database.config.ts
+│   │   ├── redis.config.ts
+│   │   ├── s3.config.ts
+│   │   └── jwt.config.ts
+│   └── main.ts
+├── prisma/
+│   ├── schema.prisma
+│   └── migrations/
+├── test/
+│   ├── unit/
+│   └── e2e/
+├── .env.example
+├── docker-compose.yml
+├── Dockerfile
+└── package.json
+
+8.2 Environment Configuration
+# .env (never commit — use AWS Secrets Manager in production)
+
+# App
+NODE_ENV=production
+PORT=3000
+API_VERSION=v1
+ALLOWED_ORIGINS=https://lovrhub.com,exp://
+
+# Database
+DATABASE_URL=postgresql://lovrhub:secret@postgres:5432/lovrhub?schema=public
+DATABASE_POOL_MIN=5
+DATABASE_POOL_MAX=20
+
+# Redis
+REDIS_URL=redis://redis-cluster:6379
+REDIS_KEY_PREFIX=lovrhub:
+
+# JWT
+JWT_ACCESS_SECRET=<256-bit-secret>
+JWT_ACCESS_EXPIRY=15m
+JWT_REFRESH_SECRET=<different-256-bit-secret>
+JWT_REFRESH_EXPIRY=30d
+
+# AWS
+AWS_REGION=us-east-1
+AWS_S3_BUCKET=lovrhub-media-prod
+AWS_CLOUDFRONT_DOMAIN=https://cdn.lovrhub.com
+AWS_SES_FROM_EMAIL=no-reply@lovrhub.com
+
+# Twilio (SMS OTP)
+TWILIO_ACCOUNT_SID=AC...
+TWILIO_AUTH_TOKEN=...
+TWILIO_PHONE_NUMBER=+1...
+
+# Stripe (payments)
+STRIPE_SECRET_KEY=sk_live_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+
+# Sentry
+SENTRY_DSN=https://...
+
+# Rate Limits
+RATE_LIMIT_WINDOW_MS=60000
+RATE_LIMIT_MAX_REQUESTS=100
+
+8.3 Docker + Kubernetes Deployment
+# docker-compose.yml (local dev)
+version: '3.9'
+services:
+  api:
+    build: .
+    ports: ["3000:3000"]
+    environment:
+      - NODE_ENV=development
+    depends_on: [postgres, redis]
+    volumes: ["./src:/app/src"]
+
+  postgres:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: lovrhub
+      POSTGRES_USER: lovrhub
+      POSTGRES_PASSWORD: secret
+    volumes: ["postgres_data:/var/lib/postgresql/data"]
+    ports: ["5432:5432"]
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
+
+volumes:
+  postgres_data:
+
+8.4 Scaling Architecture (Production)
+Traffic Flow:
+Mobile Apps → CloudFront (static + CDN) → AWS ALB → ECS Fargate Pods
+
+┌────────────────── AWS ECS Fargate ──────────────────┐
+│  API Pods (auto-scale 2-20 instances, 1vCPU/2GB)   │
+│  Worker Pods (BullMQ workers, 2-5 instances)         │
+└──────────────────────────────────────────────────────┘
+
+Database:
+  RDS PostgreSQL 16 (db.r6g.xlarge, Multi-AZ)
+  + 2x Read Replicas (analytics, feed queries)
+
+Cache:
+  ElastiCache Redis 7 (cluster mode, 3 shards)
+
+WebSockets:
+  Socket.io with Redis adapter → all API pods share same pub/sub bus
+  Sticky sessions on ALB for WebSocket connections
+
+Media:
+  S3 → Lambda (Sharp processing) → S3 (processed) → CloudFront
+
+Scaling triggers (Auto Scaling):
+  - CPU > 70% → +1 pod
+  - Memory > 80% → +1 pod
+  - ALB RequestCountPerTarget > 1000/min → +1 pod
+
+🧠 9. Future Enhancement Roadmap
+Phase 2 — Enhanced Matching (3-6 months)
+ML-Based Compatibility Score
+  ├── Feature vector per user: interests (TF-IDF), activity patterns,
+  │   response rate, conversation length, unmatch patterns
+  ├── Collaborative filtering: "users similar to you also liked..."
+  ├── Model: Serving via AWS SageMaker endpoint
+  │   Input: user_a vector, user_b vector
+  │   Output: compatibility_score (0.0-1.0)
+  └── A/B test: 50% ML ranking vs. current formula
+
+Voice + Video Calls
+  ├── WebRTC signaling via Socket.io (offer/answer/ICE exchange)
+  ├── TURN/STUN servers: Twilio Network Traversal Service
+  └── Recording opt-in: S3 + CloudFront (CSAM scanning via AWS Rekognition)
+
+Boost Feature (Premium)
+  ├── POST /v1/boosts → sets boost_active=true for 30 mins
+  ├── activity_score * 2x multiplier during boost window
+  └── Tracked in boosts table with usage limits per tier
+
+Phase 3 — Safety & Trust (6-9 months)
+AI Content Moderation
+  ├── Profile photos → AWS Rekognition (NSFW, face detection, age estimation)
+  ├── Post images → same pipeline on Lambda trigger
+  ├── Messages → Perspective API (toxicity scoring) for harassment detection
+  └── Flagged content → human_review queue in admin dashboard
+
+ID Verification
+  ├── Integration: Stripe Identity or Persona.com
+  ├── POST /v1/verification/session → creates external session
+  ├── Webhook confirms → sets users.is_verified = true
+  └── Display "ID Verified" badge on profile
+
+GDPR / Privacy Compliance
+  ├── POST /v1/users/me/data-export → async job, email download link
+  ├── DELETE /v1/users/me → GDPR-compliant erasure (30-day purge)
+  └── Consent tracking table for ToS versions
+
+Phase 4 — Engagement & Monetization (9-12 months)
+Push Notifications
+  ├── Provider: Expo Push Notifications API (wraps FCM + APNS)
+  ├── Tokens stored: push_tokens table (user_id, token, platform, active)
+  ├── Dispatch: BullMQ job → Expo Push API → FCM/APNS
+  └── Types: match, message, like, super_like, profile_view (premium)
+
+Feature Flags
+  ├── Provider: PostHog (self-hosted) or LaunchDarkly
+  ├── Usage: @FeatureFlag('ml_matching') on service methods
+  └── Gradual rollout: 1% → 10% → 50% → 100%
+
+API Performance
+  ├── Response caching: Redis cache for discover feed (2-min TTL, invalidated on swipe)
+  ├── Database query analysis: pg_stat_statements + auto EXPLAIN on slow queries
+  ├── Connection pooling: PgBouncer (transaction mode, 100 connections → 1000 clients)
+  └── Read-replica routing: analytics/feed queries → replica, writes → primary
+
+Subscription Tiers
+  ├── Free: 50 swipes/day, no super likes, basic filters
+  ├── Premium: unlimited swipes, 5 super likes/day, see who liked you, boost 1x/week
+  └── Premium+: all above + priority in discover, AI match insights, unlimited boosts
+
+Implementation Priority Order
+Week 1-2:  ├── Prisma schema + migrations
+           └── Auth module (register, OTP, login, refresh, logout)
+
+Week 3-4:  ├── Profile setup (all 8 steps)
+           └── S3 presigned URL upload + Lambda Sharp processing
+
+Week 5-6:  ├── Discover feed (PostGIS query + scoring)
+           └── Swipe + match detection + conversation creation
+
+Week 7-8:  ├── Socket.io gateway (messages, typing, read receipts, presence)
+           └── Conversations + message REST endpoints
+
+Week 9-10: ├── Posts, feed, mood filtering
+           └── Blocks, reports, admin dashboard endpoints
+
+Week 11-12:├── Subscriptions (Stripe + webhook handler)
+           ├── Push notifications (BullMQ + Expo API)
+           └── Audit logs, rate limiting, Sentry, Swagger docs
+
+This backend is architected to handle 1M+ DAU with proper indexing, caching, read replicas, and horizontal scaling — production-ready from day one, not retrofitted later
