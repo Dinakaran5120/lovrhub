@@ -69,42 +69,26 @@
 import { ThemeProvider } from '@/components/ThemeProvider';
 import '@/global.css';
 import { Stack } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import { vars } from "nativewind";
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import '../reanimated';
 
-vars({
-  "--background": "17 17 17",
-  "--foreground": "255 255 255",
-  "--card": "28 28 30",
-  "--card-foreground": "255 255 255",
-  "--primary": "230 57 70",
-  "--primary-foreground": "255 255 255",
-  "--muted": "44 44 46",
-  "--muted-foreground": "156 163 175",
-  "--accent": "230 57 70",
-  "--accent-foreground": "255 255 255",
-  "--border": "63 63 70",
-  "--input": "63 63 70",
-  "--ring": "230 57 70",
-});
+// StatusBar is managed inside ThemeProvider so it automatically
+// reflects light/dark theme changes without a separate import here.
 
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <ThemeProvider>
-      <StatusBar translucent={false} style="light" />
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="welcome" />
-        <Stack.Screen name="login" />
-        <Stack.Screen name="signup" />
-        <Stack.Screen name="signup-phone" />
-        <Stack.Screen name="otp-verify" />
-        <Stack.Screen name="profile-setup" />
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="chat-detail" />
-      </Stack>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="welcome" />
+          <Stack.Screen name="login" />
+          <Stack.Screen name="signup" />
+          <Stack.Screen name="signup-phone" />
+          <Stack.Screen name="otp-verify" />
+          <Stack.Screen name="profile-setup" />
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="chat-detail" />
+        </Stack>
       </ThemeProvider>
     </SafeAreaProvider>
   );

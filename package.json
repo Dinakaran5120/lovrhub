@@ -8,6 +8,8 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
+    "web:preview": "expo start --web --non-interactive",
+    "web:serve": "expo export -p web && npx serve dist --listen 8081 --single",
     "lint": "expo lint"
   },
   "dependencies": {
