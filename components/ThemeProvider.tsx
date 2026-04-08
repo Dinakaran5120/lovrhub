@@ -19,6 +19,7 @@
 //   );
 // }
 
+import { StatusBar } from 'expo-status-bar';
 import { useColorScheme } from 'nativewind';
 import { View } from 'react-native';
 import { darkTheme, lightTheme } from '../theme';
@@ -29,11 +30,15 @@ interface ThemeProviderProps {
 
 export function ThemeProvider({ children }: ThemeProviderProps) {
   const { colorScheme } = useColorScheme();
-  const themeVars = colorScheme === 'dark' ? darkTheme : lightTheme;
+  const isDark = colorScheme === 'dark';
+  const themeVars = isDark ? darkTheme : lightTheme;
 
   return (
-    // ✅ vars applied via style, className only sets flex + bg
-    <View style={[themeVars, { flex: 1 }]} className={colorScheme}>
+    // style injects CSS variables into the component tree via NativeWind vars()
+    // className sets 'dark' or 'light' so dark: prefix classes work on all children
+    <View style={[themeVars, { flex: 1 }]} className={isDark ? 'dark' : 'light'}>
+      {/* StatusBar lives here so it always matches the active theme */}
+      <StatusBar style={isDark ? 'light' : 'dark'} translucent={false} />
       {children}
     </View>
   );

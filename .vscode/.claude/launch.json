@@ -10,7 +10,7 @@
     {
       "name": "Expo Web",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "C:/demo/lovrhub", "run", "web"],
+      "runtimeArgs": ["--prefix", "C:/demo/lovrhub", "run", "web:preview"],
       "port": 8081
     },
     {
