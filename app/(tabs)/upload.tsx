@@ -841,22 +841,13 @@
 //   );
 // }
 
-import { ThemeToggle } from '@/components/ThemeToggle';
+import { Header } from '@/components/Header';
 import { Camera, ChevronLeft, ChevronRight, Crop, Image as ImageIcon, Video } from 'lucide-react-native';
+import { useColorScheme } from 'nativewind';
 import { useState } from 'react';
-import { Alert, Dimensions, Image, Platform, StatusBar as RNStatusBar, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Alert, Dimensions, Image, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 const { width } = Dimensions.get('window');
-
-const COLORS = {
-  background: '#111111',
-  card: '#1c1c1e',
-  primary: '#E63946',
-  border: '#3f3f46',
-  text: '#ffffff',
-  textMuted: '#9ca3af',
-};
 
 type MediaType = 'image' | 'video';
 type UploadStep = 'select' | 'preview' | 'crop' | 'details' | 'final';
@@ -872,10 +863,16 @@ const mockImages = [
 const moods: Mood[] = ['😔 Lonely', '🙂 Happy', '😵 Stressed', '💔 Heartbroken', '🔥 Adult feelings'];
 
 export default function UploadScreen() {
-  const insets = useSafeAreaInsets();
-  const STATUS_BAR_HEIGHT = Platform.OS === 'android'
-    ? (RNStatusBar.currentHeight ?? 24)
-    : 44;
+  const { colorScheme } = useColorScheme();
+  const isDark = colorScheme === 'dark';
+  const COLORS = {
+    background: isDark ? '#1c1917' : '#FFF8F5',
+    card: isDark ? '#292524' : '#ffffff',
+    primary: '#E63946',
+    border: isDark ? '#44403c' : '#f0e6e1',
+    text: isDark ? '#fafaf9' : '#2B2B2B',
+    textMuted: isDark ? '#a8a29e' : '#78716c',
+  };
 
   const [step, setStep] = useState<UploadStep>('select');
   const [media, setMedia] = useState<MediaItem[]>([]);
@@ -1235,16 +1232,16 @@ export default function UploadScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.background }}>
-      {/* Header — now with proper status bar padding */}
-      <View style={{
-        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-        paddingHorizontal: 20,
-        paddingTop: STATUS_BAR_HEIGHT + 12,
-        paddingBottom: 16,
-        borderBottomWidth: 1, borderBottomColor: COLORS.border,
-        backgroundColor: COLORS.card,
-      }}>
-        {step !== 'select' ? (
+      <Header notificationCount={0} showNotifications={false} isLoggedIn={true} />
+
+      {/* Step navigation bar */}
+      {step !== 'select' && (
+        <View style={{
+          flexDirection: 'row', alignItems: 'center',
+          paddingHorizontal: 16, paddingVertical: 12,
+          borderBottomWidth: 1, borderBottomColor: COLORS.border,
+          backgroundColor: COLORS.card,
+        }}>
           <TouchableOpacity
             onPress={() => {
               if (step === 'preview') resetUpload();
@@ -1254,18 +1251,14 @@ export default function UploadScreen() {
             }}
             style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}
           >
-            <ChevronLeft color={COLORS.text} size={28} />
+            <ChevronLeft color={COLORS.text} size={26} />
           </TouchableOpacity>
-        ) : (
+          <Text style={{ flex: 1, textAlign: 'center', color: COLORS.text, fontSize: 17, fontWeight: '700' }}>
+            {stepTitle[step]}
+          </Text>
           <View style={{ width: 40 }} />
-        )}
-
-        <Text style={{ color: COLORS.text, fontSize: 18, fontWeight: 'bold' }}>
-          {stepTitle[step]}
-        </Text>
-
-        <ThemeToggle />
-      </View>
+        </View>
+      )}
 
       {/* ✅ Guards on all media-dependent steps */}
       {step === 'select' && renderSelectMedia()}

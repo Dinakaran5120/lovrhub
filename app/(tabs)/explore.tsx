@@ -580,18 +580,13 @@
 // }
 
 import { Header } from '@/components/Header';
-import { Bookmark, Heart, MessageCircle } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Bookmark, Check, Compass, Heart, Lock, MessageCircle, Plus, Search, Users, X } from 'lucide-react-native';
+import { useColorScheme } from 'nativewind';
 import { useState } from 'react';
-import { ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Modal, ScrollView, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
-const COLORS = {
-  background: '#111111',
-  card: '#1c1c1e',
-  primary: '#E63946',
-  border: '#3f3f46',
-  text: '#ffffff',
-  textMuted: '#9ca3af',
-};
+// ── Static data ──────────────────────────────────────────────────────────────
 
 const mockMoods = [
   { id: '1', emoji: '😔', mood: 'Lonely', text: "Sometimes I feel like I'm the only one who truly understands what it's like to crave connection but fear rejection at the same time.", time: '2m ago', reactions: { relate: 42, respond: 8, save: 12 } },
@@ -610,193 +605,515 @@ const moods = [
   { emoji: '🔥', label: 'Adult feelings' },
 ];
 
-const moodBgColors: Record<string, string> = {
-  Lonely: '#f3f4f6',
-  Happy: '#d1fae5',
-  Stressed: '#fef3c7',
-  Heartbroken: '#fee2e2',
-  'Adult feelings': '#fed7aa',
+const moodTagColors: Record<string, { bg: string; text: string }> = {
+  Lonely:           { bg: '#e0e7ff', text: '#3730a3' },
+  Happy:            { bg: '#d1fae5', text: '#065f46' },
+  Stressed:         { bg: '#fef3c7', text: '#92400e' },
+  Heartbroken:      { bg: '#fee2e2', text: '#991b1b' },
+  'Adult feelings': { bg: '#fed7aa', text: '#9a3412' },
 };
 
+type Community = {
+  id: string; name: string; description: string;
+  members: number; emoji: string; isPrivate: boolean;
+  joined: boolean; requested: boolean;
+};
+
+const initialCommunities: Community[] = [
+  { id: '1', name: 'Night Owls', description: 'For those who come alive after midnight', members: 2840, emoji: '🦉', isPrivate: false, joined: true, requested: false },
+  { id: '2', name: 'Book & Coffee Lovers', description: 'Discuss your latest read over a virtual latte', members: 1593, emoji: '📚', isPrivate: false, joined: false, requested: false },
+  { id: '3', name: 'Fitness & Dating', description: 'Gym buddies who are also dating', members: 987, emoji: '💪', isPrivate: true, joined: false, requested: false },
+  { id: '4', name: 'LGBTQ+ Safe Space', description: 'Inclusive community for all identities', members: 4210, emoji: '🏳️‍🌈', isPrivate: false, joined: false, requested: false },
+  { id: '5', name: 'Travel Romantics', description: 'Explore the world and find love', members: 3120, emoji: '✈️', isPrivate: false, joined: true, requested: false },
+  { id: '6', name: 'VIP Lounge', description: 'Private premium community', members: 340, emoji: '👑', isPrivate: true, joined: false, requested: true },
+];
+
+// ── Main component ────────────────────────────────────────────────────────────
+
 export default function ExploreScreen() {
+  const { colorScheme } = useColorScheme();
+  const isDark = colorScheme === 'dark';
+  const C = {
+    bg: isDark ? '#1c1917' : '#FFF8F5',
+    card: isDark ? '#292524' : '#ffffff',
+    cardAlt: isDark ? '#3f3f46' : '#f5f0ee',
+    text: isDark ? '#fafaf9' : '#2B2B2B',
+    textMuted: isDark ? '#a8a29e' : '#78716c',
+    border: isDark ? '#44403c' : '#f0e6e1',
+    primary: '#E63946',
+    input: isDark ? '#1a1a1a' : '#f3f4f6',
+  };
+
+  // Mood Space state
   const [selectedMood, setSelectedMood] = useState<string | null>(null);
   const [moodText, setMoodText] = useState('');
   const [feedData, setFeedData] = useState(mockMoods);
+
+  // Communities state
+  const [activeTab, setActiveTab] = useState<'mood' | 'communities'>('mood');
+  const [communities, setCommunities] = useState<Community[]>(initialCommunities);
+  const [communitySearch, setCommunitySearch] = useState('');
+
+  // + FAB modal state
+  const [fabModalVisible, setFabModalVisible] = useState(false);
+  const [createModalVisible, setCreateModalVisible] = useState(false);
+  const [newCommunityName, setNewCommunityName] = useState('');
+  const [newCommunityDesc, setNewCommunityDesc] = useState('');
+  const [newCommunityPrivate, setNewCommunityPrivate] = useState(false);
 
   const handleShare = () => {
     if (!selectedMood || !moodText.trim()) return;
     setFeedData([{
       id: Date.now().toString(),
       emoji: moods.find(m => m.label === selectedMood)?.emoji || '🙂',
-      mood: selectedMood,
-      text: moodText,
-      time: 'Just now',
+      mood: selectedMood, text: moodText, time: 'Just now',
       reactions: { relate: 0, respond: 0, save: 0 },
     }, ...feedData]);
-    setMoodText('');
-    setSelectedMood(null);
+    setMoodText(''); setSelectedMood(null);
+  };
+
+  const handleJoinToggle = (id: string) => {
+    setCommunities(prev => prev.map(c => {
+      if (c.id !== id) return c;
+      if (c.isPrivate && !c.joined) return { ...c, requested: !c.requested };
+      return { ...c, joined: !c.joined, members: c.joined ? c.members - 1 : c.members + 1 };
+    }));
+  };
+
+  const handleCreateCommunity = () => {
+    if (!newCommunityName.trim()) return;
+    const newC: Community = {
+      id: Date.now().toString(),
+      name: newCommunityName.trim(),
+      description: newCommunityDesc.trim() || 'A new community on LovrHub',
+      members: 1, emoji: '💖',
+      isPrivate: newCommunityPrivate,
+      joined: true, requested: false,
+    };
+    setCommunities(prev => [newC, ...prev]);
+    setNewCommunityName(''); setNewCommunityDesc(''); setNewCommunityPrivate(false);
+    setCreateModalVisible(false);
   };
 
   const filteredFeed = selectedMood ? feedData.filter(i => i.mood === selectedMood) : feedData;
+  const filteredCommunities = communitySearch
+    ? communities.filter(c => c.name.toLowerCase().includes(communitySearch.toLowerCase()))
+    : communities;
 
-  return (
-    <View style={{ flex: 1, backgroundColor: COLORS.background }}>
-      <Header notificationCount={5} showNotifications={true} isLoggedIn={true} />
+  const formatMembers = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 100 }}>
+  // ── Mood Space tab ─────────────────────────────────────────────────────────
+  const renderMoodSpace = () => (
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 120 }}>
+      <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16 }}>
+        <Text style={{ color: C.text, fontSize: 26, fontWeight: 'bold' }}>Mood Space</Text>
+        <Text style={{ color: C.textMuted, marginTop: 4, fontSize: 14 }}>
+          Share your feelings anonymously. You're not alone.
+        </Text>
+      </View>
 
-        {/* Page Title */}
-        <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 20 }}>
-          <Text style={{ color: COLORS.text, fontSize: 28, fontWeight: 'bold' }}>Mood Space</Text>
-          <Text style={{ color: COLORS.textMuted, marginTop: 4, fontSize: 14 }}>
-            Share your feelings anonymously. You're not alone.
-          </Text>
-        </View>
-
-        {/* Mood Selector */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 20, gap: 10, paddingBottom: 20 }}>
-          {moods.map((mood) => {
-            const isSelected = selectedMood === mood.label;
-            return (
-              <TouchableOpacity
-                key={mood.label}
-                onPress={() => setSelectedMood(isSelected ? null : mood.label)}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 8,
-                  paddingHorizontal: 16, paddingVertical: 10,
-                  borderRadius: 999,
-                  backgroundColor: isSelected ? COLORS.primary : COLORS.card,
-                  borderWidth: 1,
-                  borderColor: isSelected ? COLORS.primary : COLORS.border,
-                }}
-              >
-                <Text style={{ fontSize: 18 }}>{mood.emoji}</Text>
-                <Text style={{ color: isSelected ? '#fff' : COLORS.text, fontWeight: '600', fontSize: 14 }}>
-                  {mood.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-
-        {/* Share Card */}
-        <View style={{ paddingHorizontal: 20, marginBottom: 24 }}>
-          <View style={{
-            backgroundColor: COLORS.card, borderRadius: 20, padding: 18,
-            borderWidth: 1, borderColor: COLORS.border,
-          }}>
-            <Text style={{ color: COLORS.text, fontSize: 16, fontWeight: '600', marginBottom: 12 }}>
-              How are you feeling?
-            </Text>
-            <TextInput
-              value={moodText}
-              onChangeText={setMoodText}
-              placeholder="Share your thoughts anonymously... (120 chars)"
-              placeholderTextColor="#6b7280"
-              multiline
-              maxLength={120}
+      {/* Mood filter chips */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 20, gap: 10, paddingBottom: 16 }}>
+        {moods.map((mood) => {
+          const isSelected = selectedMood === mood.label;
+          return (
+            <TouchableOpacity
+              key={mood.label}
+              onPress={() => setSelectedMood(isSelected ? null : mood.label)}
               style={{
-                backgroundColor: '#1a1a1a', borderRadius: 12, padding: 14,
-                color: COLORS.text, minHeight: 100, textAlignVertical: 'top',
-                fontSize: 14, borderWidth: 1, borderColor: COLORS.border, marginBottom: 14,
+                flexDirection: 'row', alignItems: 'center', gap: 8,
+                paddingHorizontal: 16, paddingVertical: 9, borderRadius: 999,
+                backgroundColor: isSelected ? C.primary : C.card,
+                borderWidth: 1, borderColor: isSelected ? C.primary : C.border,
               }}
-            />
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Text style={{ color: COLORS.textMuted, fontSize: 13 }}>{moodText.length}/120</Text>
-              <TouchableOpacity
-                onPress={handleShare}
-                disabled={!selectedMood || !moodText.trim()}
-                style={{
-                  paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999,
-                  backgroundColor: selectedMood && moodText.trim() ? COLORS.primary : '#3f3f46',
-                }}
-              >
-                <Text style={{
-                  fontWeight: '700', fontSize: 14,
-                  color: selectedMood && moodText.trim() ? '#fff' : COLORS.textMuted,
-                }}>
-                  Share Anonymously
-                </Text>
-              </TouchableOpacity>
-            </View>
+            >
+              <Text style={{ fontSize: 17 }}>{mood.emoji}</Text>
+              <Text style={{ color: isSelected ? '#fff' : C.text, fontWeight: '600', fontSize: 14 }}>
+                {mood.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      {/* Share card */}
+      <View style={{ paddingHorizontal: 20, marginBottom: 22 }}>
+        <View style={{ backgroundColor: C.card, borderRadius: 20, padding: 18, borderWidth: 1, borderColor: C.border }}>
+          <Text style={{ color: C.text, fontSize: 16, fontWeight: '600', marginBottom: 12 }}>How are you feeling?</Text>
+          <TextInput
+            value={moodText}
+            onChangeText={setMoodText}
+            placeholder="Share your thoughts anonymously... (120 chars)"
+            placeholderTextColor={C.textMuted}
+            multiline maxLength={120}
+            style={{
+              backgroundColor: C.input, borderRadius: 12, padding: 14,
+              color: C.text, minHeight: 90, textAlignVertical: 'top',
+              fontSize: 14, borderWidth: 1, borderColor: C.border, marginBottom: 12,
+            }}
+          />
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={{ color: C.textMuted, fontSize: 13 }}>{moodText.length}/120</Text>
+            <TouchableOpacity
+              onPress={handleShare}
+              disabled={!selectedMood || !moodText.trim()}
+              style={{
+                paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999,
+                backgroundColor: selectedMood && moodText.trim() ? C.primary : C.cardAlt,
+              }}
+            >
+              <Text style={{ fontWeight: '700', fontSize: 14, color: selectedMood && moodText.trim() ? '#fff' : C.textMuted }}>
+                Share Anonymously
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
+      </View>
 
-        {/* Feed Title */}
-        <View style={{ paddingHorizontal: 20, marginBottom: 14 }}>
-          <Text style={{ color: COLORS.text, fontSize: 20, fontWeight: 'bold' }}>
-            {selectedMood ? `${selectedMood} Moods` : 'Community Moods'}
-          </Text>
-        </View>
+      {/* Feed title */}
+      <View style={{ paddingHorizontal: 20, marginBottom: 12 }}>
+        <Text style={{ color: C.text, fontSize: 18, fontWeight: 'bold' }}>
+          {selectedMood ? `${selectedMood} Moods` : 'Community Moods'}
+        </Text>
+      </View>
 
-        {/* Mood Cards */}
-        <View style={{ paddingHorizontal: 20, gap: 14 }}>
-          {filteredFeed.map((item) => (
-            <View key={item.id} style={{
-              backgroundColor: COLORS.card, borderRadius: 20, padding: 18,
-              borderWidth: 1, borderColor: COLORS.border,
-            }}>
-              {/* Top Row */}
+      {/* Mood cards */}
+      <View style={{ paddingHorizontal: 20, gap: 14 }}>
+        {filteredFeed.map((item) => {
+          const tag = moodTagColors[item.mood] || { bg: '#f3f4f6', text: '#111' };
+          return (
+            <View key={item.id} style={{ backgroundColor: C.card, borderRadius: 20, padding: 18, borderWidth: 1, borderColor: C.border }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={{ fontSize: 26 }}>{item.emoji}</Text>
-                  <View style={{
-                    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999,
-                    backgroundColor: moodBgColors[item.mood] || '#f3f4f6',
-                  }}>
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#111' }}>{item.mood}</Text>
+                  <Text style={{ fontSize: 24 }}>{item.emoji}</Text>
+                  <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: tag.bg }}>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: tag.text }}>{item.mood}</Text>
                   </View>
                 </View>
-                <Text style={{ color: COLORS.textMuted, fontSize: 12 }}>{item.time}</Text>
+                <Text style={{ color: C.textMuted, fontSize: 12 }}>{item.time}</Text>
               </View>
-
-              {/* Text */}
-              <Text style={{ color: COLORS.text, fontSize: 14, lineHeight: 22, marginBottom: 14 }}>
-                {item.text}
-              </Text>
-
-              {/* Reactions */}
-              <View style={{
-                flexDirection: 'row', alignItems: 'center', gap: 20,
-                paddingTop: 12, borderTopWidth: 1, borderTopColor: COLORS.border,
-              }}>
-                <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Heart size={18} color={COLORS.primary} />
-                  <Text style={{ color: COLORS.text, fontSize: 13, fontWeight: '600' }}>{item.reactions.relate}</Text>
-                  <Text style={{ color: COLORS.textMuted, fontSize: 13 }}>Relate</Text>
+              <Text style={{ color: C.text, fontSize: 14, lineHeight: 22, marginBottom: 14 }}>{item.text}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 20, paddingTop: 12, borderTopWidth: 1, borderTopColor: C.border }}>
+                <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                  <Heart size={17} color={C.primary} />
+                  <Text style={{ color: C.text, fontSize: 13, fontWeight: '600' }}>{item.reactions.relate}</Text>
+                  <Text style={{ color: C.textMuted, fontSize: 13 }}>Relate</Text>
                 </TouchableOpacity>
-
-                <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <MessageCircle size={18} color={COLORS.textMuted} />
-                  <Text style={{ color: COLORS.text, fontSize: 13, fontWeight: '600' }}>{item.reactions.respond}</Text>
-                  <Text style={{ color: COLORS.textMuted, fontSize: 13 }}>Respond</Text>
+                <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                  <MessageCircle size={17} color={C.textMuted} />
+                  <Text style={{ color: C.text, fontSize: 13, fontWeight: '600' }}>{item.reactions.respond}</Text>
+                  <Text style={{ color: C.textMuted, fontSize: 13 }}>Respond</Text>
                 </TouchableOpacity>
-
-                <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Bookmark size={18} color={COLORS.textMuted} />
-                  <Text style={{ color: COLORS.text, fontSize: 13, fontWeight: '600' }}>{item.reactions.save}</Text>
-                  <Text style={{ color: COLORS.textMuted, fontSize: 13 }}>Save</Text>
+                <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                  <Bookmark size={17} color={C.textMuted} />
+                  <Text style={{ color: C.text, fontSize: 13, fontWeight: '600' }}>{item.reactions.save}</Text>
+                  <Text style={{ color: C.textMuted, fontSize: 13 }}>Save</Text>
                 </TouchableOpacity>
               </View>
             </View>
-          ))}
-        </View>
+          );
+        })}
+      </View>
 
-        {/* Empty State */}
-        {filteredFeed.length === 0 && (
-          <View style={{ alignItems: 'center', paddingVertical: 48, paddingHorizontal: 24 }}>
-            <Text style={{ fontSize: 48, marginBottom: 16 }}>
-              {selectedMood ? moods.find(m => m.label === selectedMood)?.emoji : '💭'}
-            </Text>
-            <Text style={{ color: COLORS.text, fontSize: 20, fontWeight: '600', marginBottom: 8, textAlign: 'center' }}>
-              No moods yet
-            </Text>
-            <Text style={{ color: COLORS.textMuted, textAlign: 'center', fontSize: 14 }}>
-              {selectedMood ? `Be the first to share a ${selectedMood.toLowerCase()} mood` : "Share how you're feeling to start the conversation"}
-            </Text>
+      {filteredFeed.length === 0 && (
+        <View style={{ alignItems: 'center', paddingVertical: 48, paddingHorizontal: 24 }}>
+          <Text style={{ fontSize: 48, marginBottom: 16 }}>{selectedMood ? moods.find(m => m.label === selectedMood)?.emoji : '💭'}</Text>
+          <Text style={{ color: C.text, fontSize: 20, fontWeight: '600', marginBottom: 8, textAlign: 'center' }}>No moods yet</Text>
+          <Text style={{ color: C.textMuted, textAlign: 'center', fontSize: 14 }}>
+            {selectedMood ? `Be the first to share a ${selectedMood.toLowerCase()} mood` : "Share how you're feeling"}
+          </Text>
+        </View>
+      )}
+    </ScrollView>
+  );
+
+  // ── Communities tab ────────────────────────────────────────────────────────
+  const renderCommunities = () => (
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 120 }}>
+      <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16 }}>
+        <Text style={{ color: C.text, fontSize: 26, fontWeight: 'bold' }}>Communities</Text>
+        <Text style={{ color: C.textMuted, marginTop: 4, fontSize: 14 }}>Find your people, share your world.</Text>
+      </View>
+
+      {/* Search */}
+      <View style={{ paddingHorizontal: 20, marginBottom: 16 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: C.border }}>
+          <Search size={17} color={C.textMuted} />
+          <TextInput
+            placeholder="Search communities..."
+            placeholderTextColor={C.textMuted}
+            value={communitySearch}
+            onChangeText={setCommunitySearch}
+            style={{ flex: 1, marginLeft: 10, fontSize: 15, color: C.text }}
+          />
+        </View>
+      </View>
+
+      {/* Community cards */}
+      <View style={{ paddingHorizontal: 20, gap: 12 }}>
+        {filteredCommunities.map((community) => (
+          <View key={community.id} style={{ backgroundColor: C.card, borderRadius: 18, padding: 16, borderWidth: 1, borderColor: C.border }}>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 14 }}>
+              {/* Emoji icon */}
+              <LinearGradient
+                colors={['#E63946', '#C2185B', '#7B1FA2']}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                style={{ width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Text style={{ fontSize: 26 }}>{community.emoji}</Text>
+              </LinearGradient>
+
+              <View style={{ flex: 1 }}>
+                {/* Name + lock */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <Text style={{ color: C.text, fontWeight: '700', fontSize: 16 }}>{community.name}</Text>
+                  {community.isPrivate && <Lock size={13} color={C.textMuted} />}
+                  {community.joined && (
+                    <View style={{ backgroundColor: C.primary + '22', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
+                      <Text style={{ color: C.primary, fontSize: 10, fontWeight: '700' }}>Joined</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={{ color: C.textMuted, fontSize: 13, marginTop: 2 }} numberOfLines={2}>
+                  {community.description}
+                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 }}>
+                  <Users size={13} color={C.textMuted} />
+                  <Text style={{ color: C.textMuted, fontSize: 12 }}>{formatMembers(community.members)} members</Text>
+                </View>
+              </View>
+
+              {/* Join button */}
+              <TouchableOpacity
+                onPress={() => handleJoinToggle(community.id)}
+                style={{
+                  paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12,
+                  backgroundColor: community.joined ? C.cardAlt : C.primary,
+                  borderWidth: community.joined ? 1 : 0,
+                  borderColor: C.border,
+                  alignItems: 'center', justifyContent: 'center',
+                  minWidth: 70,
+                }}
+              >
+                {community.joined ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Check size={13} color={C.textMuted} />
+                    <Text style={{ color: C.textMuted, fontWeight: '600', fontSize: 12 }}>Joined</Text>
+                  </View>
+                ) : community.isPrivate && community.requested ? (
+                  <Text style={{ color: C.textMuted, fontWeight: '600', fontSize: 12 }}>Requested</Text>
+                ) : community.isPrivate ? (
+                  <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>Request</Text>
+                ) : (
+                  <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>Join</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        ))}
+
+        {filteredCommunities.length === 0 && (
+          <View style={{ alignItems: 'center', paddingVertical: 48 }}>
+            <Text style={{ fontSize: 40, marginBottom: 12 }}>🔍</Text>
+            <Text style={{ color: C.text, fontSize: 18, fontWeight: '600', marginBottom: 6 }}>No communities found</Text>
+            <Text style={{ color: C.textMuted, fontSize: 14 }}>Try a different search term</Text>
           </View>
         )}
-      </ScrollView>
+      </View>
+    </ScrollView>
+  );
+
+  // ── Main return ────────────────────────────────────────────────────────────
+  return (
+    <View style={{ flex: 1, backgroundColor: C.bg }}>
+      <Header notificationCount={5} showNotifications={true} isLoggedIn={true} />
+
+      {/* Tab switcher */}
+      <View style={{
+        flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 12, gap: 10,
+        borderBottomWidth: 1, borderBottomColor: C.border,
+        backgroundColor: C.bg,
+      }}>
+        {([
+          { key: 'mood', label: '💭 Mood Space' },
+          { key: 'communities', label: '👥 Communities' },
+        ] as const).map(tab => (
+          <TouchableOpacity
+            key={tab.key}
+            onPress={() => setActiveTab(tab.key)}
+            style={{
+              flex: 1, paddingVertical: 10, borderRadius: 14, alignItems: 'center',
+              backgroundColor: activeTab === tab.key ? C.primary : C.card,
+              borderWidth: 1, borderColor: activeTab === tab.key ? C.primary : C.border,
+            }}
+          >
+            <Text style={{ color: activeTab === tab.key ? '#fff' : C.text, fontWeight: '700', fontSize: 13 }}>
+              {tab.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Tab content */}
+      {activeTab === 'mood' ? renderMoodSpace() : renderCommunities()}
+
+      {/* ── + FAB ── */}
+      <TouchableOpacity
+        onPress={() => setFabModalVisible(true)}
+        style={{
+          position: 'absolute', bottom: 90, right: 20,
+          width: 56, height: 56, borderRadius: 28,
+          alignItems: 'center', justifyContent: 'center',
+          shadowColor: '#E63946', shadowOpacity: 0.45, shadowRadius: 12, shadowOffset: { width: 0, height: 4 },
+          elevation: 8,
+        }}
+      >
+        <LinearGradient
+          colors={['#E63946', '#C2185B']}
+          start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+          style={{ width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' }}
+        >
+          <Plus size={26} color="#fff" strokeWidth={2.5} />
+        </LinearGradient>
+      </TouchableOpacity>
+
+      {/* ── FAB choice modal ── */}
+      <Modal visible={fabModalVisible} animationType="slide" transparent onRequestClose={() => setFabModalVisible(false)}>
+        <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setFabModalVisible(false)}>
+          <TouchableOpacity activeOpacity={1} onPress={e => e.stopPropagation()} style={{
+            position: 'absolute', bottom: 0, left: 0, right: 0,
+            borderTopLeftRadius: 28, borderTopRightRadius: 28,
+            backgroundColor: C.card, padding: 28,
+          }}>
+            {/* Drag handle */}
+            <View style={{ width: 40, height: 4, backgroundColor: C.border, borderRadius: 2, alignSelf: 'center', marginBottom: 22 }} />
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+              <Text style={{ color: C.text, fontSize: 22, fontWeight: 'bold' }}>What would you like to do?</Text>
+              <TouchableOpacity onPress={() => setFabModalVisible(false)}>
+                <X size={22} color={C.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ gap: 12 }}>
+              {/* Explore Communities */}
+              <TouchableOpacity
+                onPress={() => { setFabModalVisible(false); setActiveTab('communities'); }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 16, backgroundColor: C.cardAlt, borderRadius: 18, padding: 18 }}
+              >
+                <LinearGradient
+                  colors={['#7B1FA2', '#C2185B']}
+                  style={{ width: 50, height: 50, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <Compass size={24} color="#fff" />
+                </LinearGradient>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: C.text, fontWeight: '700', fontSize: 16 }}>Explore Communities</Text>
+                  <Text style={{ color: C.textMuted, fontSize: 13, marginTop: 2 }}>Discover and join communities</Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* Add Community */}
+              <TouchableOpacity
+                onPress={() => { setFabModalVisible(false); setCreateModalVisible(true); }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 16, backgroundColor: C.cardAlt, borderRadius: 18, padding: 18 }}
+              >
+                <LinearGradient
+                  colors={['#E63946', '#FF8C6B']}
+                  style={{ width: 50, height: 50, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <Plus size={24} color="#fff" />
+                </LinearGradient>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: C.text, fontWeight: '700', fontSize: 16 }}>Add Community</Text>
+                  <Text style={{ color: C.textMuted, fontSize: 13, marginTop: 2 }}>Create a new community</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+            <View style={{ height: 24 }} />
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* ── Create Community modal ── */}
+      <Modal visible={createModalVisible} animationType="slide" transparent onRequestClose={() => setCreateModalVisible(false)}>
+        <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setCreateModalVisible(false)}>
+          <TouchableOpacity activeOpacity={1} onPress={e => e.stopPropagation()} style={{
+            position: 'absolute', bottom: 0, left: 0, right: 0,
+            borderTopLeftRadius: 28, borderTopRightRadius: 28,
+            backgroundColor: C.card, padding: 28,
+          }}>
+            <View style={{ width: 40, height: 4, backgroundColor: C.border, borderRadius: 2, alignSelf: 'center', marginBottom: 22 }} />
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+              <Text style={{ color: C.text, fontSize: 22, fontWeight: 'bold' }}>Create Community</Text>
+              <TouchableOpacity onPress={() => setCreateModalVisible(false)}>
+                <X size={22} color={C.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ gap: 14 }}>
+              {/* Community name */}
+              <View>
+                <Text style={{ color: C.text, fontWeight: '600', marginBottom: 8 }}>Community Name *</Text>
+                <TextInput
+                  value={newCommunityName}
+                  onChangeText={setNewCommunityName}
+                  placeholder="e.g. Morning Runners Club"
+                  placeholderTextColor={C.textMuted}
+                  style={{ backgroundColor: C.cardAlt, borderRadius: 14, padding: 14, color: C.text, fontSize: 15, borderWidth: 1, borderColor: C.border }}
+                />
+              </View>
+
+              {/* Description */}
+              <View>
+                <Text style={{ color: C.text, fontWeight: '600', marginBottom: 8 }}>Description</Text>
+                <TextInput
+                  value={newCommunityDesc}
+                  onChangeText={setNewCommunityDesc}
+                  placeholder="What's your community about?"
+                  placeholderTextColor={C.textMuted}
+                  multiline
+                  style={{ backgroundColor: C.cardAlt, borderRadius: 14, padding: 14, color: C.text, fontSize: 15, borderWidth: 1, borderColor: C.border, minHeight: 80, textAlignVertical: 'top' }}
+                />
+              </View>
+
+              {/* Private toggle */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: C.cardAlt, borderRadius: 14, padding: 16 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <Lock size={18} color={C.textMuted} />
+                  <View>
+                    <Text style={{ color: C.text, fontWeight: '600' }}>Private Community</Text>
+                    <Text style={{ color: C.textMuted, fontSize: 12 }}>Members need approval to join</Text>
+                  </View>
+                </View>
+                <Switch
+                  value={newCommunityPrivate}
+                  onValueChange={setNewCommunityPrivate}
+                  trackColor={{ false: C.border, true: C.primary }}
+                  thumbColor="#fff"
+                />
+              </View>
+
+              {/* Create button */}
+              <TouchableOpacity
+                onPress={handleCreateCommunity}
+                disabled={!newCommunityName.trim()}
+                style={{ borderRadius: 16, overflow: 'hidden', opacity: newCommunityName.trim() ? 1 : 0.5 }}
+              >
+                <LinearGradient
+                  colors={['#E63946', '#C2185B']}
+                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                  style={{ paddingVertical: 16, alignItems: 'center' }}
+                >
+                  <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>Create Community 💖</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+            <View style={{ height: 20 }} />
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }

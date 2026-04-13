@@ -1014,167 +1014,300 @@
 
 
 import { Header } from "@/components/Header";
+import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { ChevronRight, Heart, MessageCircle, Settings, Star, User } from "lucide-react-native";
+import { Camera, ChevronRight, Crown, Grid3x3, Heart, Lock, LogOut, MessageCircle, Settings, Shield, Star, User } from "lucide-react-native";
+import { useColorScheme } from 'nativewind';
 import { useState } from "react";
-import { Image, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { Dimensions, Image, Modal, ScrollView, Switch, Text, TouchableOpacity, View } from "react-native";
 
-const COLORS = {
-  background: '#111111',
-  card: '#1c1c1e',
-  cardAlt: '#292524',
-  primary: '#E63946',
-  border: '#3f3f46',
-  text: '#ffffff',
-  textMuted: '#9ca3af',
-};
+const { width } = Dimensions.get('window');
+const GRID_SIZE = (width - 40 - 8) / 3; // 3 columns with 20px padding each side + 4px gaps
 
-const user = {
+const mockUser = {
   name: "Sarah Johnson",
+  username: "@sarahjohnson",
   age: 28,
-  bio: "Coffee lover ☕ | Travel enthusiast ✈️ | Dog mom 🐕",
+  bio: "Coffee lover ☕ | Travel enthusiast ✈️ | Dog mom 🐕\nLooking for genuine connection 💕",
   avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400",
   location: "New York, NY",
   verified: true,
+  posts: 24,
+  followers: 1284,
+  following: 342,
+  matches: 42,
 };
 
-const stats = [
-  { icon: Heart, label: "Matches", value: "42", color: "#fb7185" },
-  { icon: MessageCircle, label: "Chats", value: "18", color: "#a855f7" },
-  { icon: Star, label: "Likes", value: "127", color: "#fbbf24" },
+const mockPosts = [
+  "https://images.unsplash.com/photo-1501854140801-50d01698950b?w=400",
+  "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=400",
+  "https://images.unsplash.com/photo-1516483638261-f4dbaf036963?w=400",
+  "https://images.unsplash.com/photo-1543716091-a840c05249ec?w=400",
+  "https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=400",
+  "https://images.unsplash.com/photo-1533105079780-92b9be482077?w=400",
 ];
 
 export default function AccountScreen() {
+  const { colorScheme } = useColorScheme();
+  const isDark = colorScheme === 'dark';
+  const C = {
+    bg: isDark ? '#1c1917' : '#FFF8F5',
+    card: isDark ? '#292524' : '#ffffff',
+    text: isDark ? '#fafaf9' : '#2B2B2B',
+    textMuted: isDark ? '#a8a29e' : '#78716c',
+    border: isDark ? '#44403c' : '#f0e6e1',
+    primary: '#E63946',
+    cardAlt: isDark ? '#3f3f46' : '#f5f0ee',
+  };
+
   const router = useRouter();
-  const [menuVisible, setMenuVisible] = useState(false);
+  const [settingsVisible, setSettingsVisible] = useState(false);
+  const [profilePublic, setProfilePublic] = useState(true);
+  const [notifications, setNotifications] = useState(true);
+
+  const formatNumber = (n: number) =>
+    n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 
   return (
-    <View style={{ flex: 1, backgroundColor: COLORS.background }}>
-      <Header notificationCount={0} showNotifications={false} isLoggedIn={true} />
+    <View style={{ flex: 1, backgroundColor: C.bg }}>
+      <Header notificationCount={2} showNotifications={true} isLoggedIn={true} />
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
 
-        {/* Profile Card */}
-        <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8 }}>
-          <View style={{
-            backgroundColor: COLORS.card, borderRadius: 24, padding: 24,
-            alignItems: 'center', borderWidth: 1, borderColor: COLORS.border,
-          }}>
-            {/* Avatar */}
-            <View style={{ position: 'relative' }}>
+        {/* ── Profile Header ── */}
+        <View style={{ alignItems: 'center', paddingTop: 24, paddingHorizontal: 24 }}>
+
+          {/* Gradient Ring Avatar */}
+          <LinearGradient
+            colors={['#E63946', '#C2185B', '#7B1FA2']}
+            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+            style={{ width: 108, height: 108, borderRadius: 54, padding: 3, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <View style={{ width: 102, height: 102, borderRadius: 51, overflow: 'hidden', borderWidth: 2, borderColor: C.bg }}>
               <Image
-                source={{ uri: user.avatar }}
-                style={{ width: 96, height: 96, borderRadius: 48, borderWidth: 3, borderColor: COLORS.primary }}
+                source={{ uri: mockUser.avatar }}
+                style={{ width: '100%', height: '100%' }}
+                resizeMode="cover"
               />
-              {user.verified && (
-                <View style={{
-                  position: 'absolute', bottom: 0, right: 0,
-                  backgroundColor: COLORS.primary, borderRadius: 12,
-                  width: 24, height: 24, alignItems: 'center', justifyContent: 'center',
-                  borderWidth: 2, borderColor: COLORS.background,
-                }}>
-                  <Star size={12} fill="#fff" color="#fff" />
-                </View>
-              )}
             </View>
+          </LinearGradient>
 
-            {/* Name */}
-            <Text style={{ color: COLORS.text, fontSize: 22, fontWeight: 'bold', marginTop: 14 }}>
-              {user.name}
-            </Text>
-            <Text style={{ color: COLORS.textMuted, fontSize: 14, marginTop: 4 }}>
-              {user.age} • {user.location}
-            </Text>
-            <Text style={{ color: COLORS.text, fontSize: 14, textAlign: 'center', marginTop: 10, lineHeight: 20 }}>
-              {user.bio}
-            </Text>
+          {/* Camera badge */}
+          <TouchableOpacity
+            style={{
+              position: 'absolute', top: 24 + 76, right: width / 2 - 54 - 4,
+              width: 30, height: 30, borderRadius: 15,
+              backgroundColor: C.primary, borderWidth: 2, borderColor: C.bg,
+              alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <Camera size={14} color="#fff" />
+          </TouchableOpacity>
 
-            {/* Edit Profile Button */}
+          {/* Name & verified */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 14 }}>
+            <Text style={{ color: C.text, fontSize: 22, fontWeight: 'bold' }}>{mockUser.name}</Text>
+            {mockUser.verified && (
+              <LinearGradient colors={['#E63946', '#C2185B']} style={{ borderRadius: 10, padding: 3 }}>
+                <Star size={10} fill="#fff" color="#fff" />
+              </LinearGradient>
+            )}
+          </View>
+          <Text style={{ color: C.textMuted, fontSize: 14, marginTop: 2 }}>{mockUser.username} · {mockUser.location}</Text>
+          <Text style={{ color: C.text, fontSize: 14, textAlign: 'center', marginTop: 10, lineHeight: 21 }}>
+            {mockUser.bio}
+          </Text>
+
+          {/* Edit Profile + Share row */}
+          <View style={{ flexDirection: 'row', gap: 12, marginTop: 18, width: '100%' }}>
             <TouchableOpacity
               onPress={() => router.push("/profile-setup")}
               style={{
-                marginTop: 16, paddingHorizontal: 28, paddingVertical: 10,
-                borderRadius: 999, borderWidth: 1.5, borderColor: COLORS.primary,
+                flex: 1, paddingVertical: 11, borderRadius: 14,
+                borderWidth: 1.5, borderColor: C.primary,
+                alignItems: 'center',
               }}
             >
-              <Text style={{ color: COLORS.primary, fontWeight: '700', fontSize: 14 }}>Edit Profile</Text>
+              <Text style={{ color: C.primary, fontWeight: '700', fontSize: 14 }}>Edit Profile</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setSettingsVisible(true)}
+              style={{
+                paddingHorizontal: 16, paddingVertical: 11, borderRadius: 14,
+                borderWidth: 1.5, borderColor: C.border,
+                alignItems: 'center',
+              }}
+            >
+              <Settings size={18} color={C.text} />
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Stats */}
-        <View style={{ flexDirection: 'row', paddingHorizontal: 20, gap: 12, marginVertical: 16 }}>
-          {stats.map((stat, index) => (
-            <View key={index} style={{
-              flex: 1, backgroundColor: COLORS.card, borderRadius: 16,
-              padding: 16, alignItems: 'center',
-              borderWidth: 1, borderColor: COLORS.border,
-            }}>
-              <stat.icon color={stat.color} size={24} />
-              <Text style={{ color: COLORS.text, fontSize: 24, fontWeight: 'bold', marginTop: 8 }}>
-                {stat.value}
+        {/* ── Stats Row ── */}
+        <View style={{
+          flexDirection: 'row', marginHorizontal: 20, marginTop: 24,
+          backgroundColor: C.card, borderRadius: 20, overflow: 'hidden',
+          borderWidth: 1, borderColor: C.border,
+        }}>
+          {[
+            { label: 'Posts', value: mockUser.posts },
+            { label: 'Followers', value: mockUser.followers },
+            { label: 'Following', value: mockUser.following },
+            { label: 'Matches', value: mockUser.matches },
+          ].map((stat, i, arr) => (
+            <TouchableOpacity
+              key={stat.label}
+              style={{
+                flex: 1, alignItems: 'center', paddingVertical: 16,
+                borderRightWidth: i < arr.length - 1 ? 1 : 0,
+                borderRightColor: C.border,
+              }}
+            >
+              <Text style={{ color: C.text, fontSize: 20, fontWeight: 'bold' }}>
+                {formatNumber(stat.value)}
               </Text>
-              <Text style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 2 }}>
-                {stat.label}
-              </Text>
-            </View>
+              <Text style={{ color: C.textMuted, fontSize: 11, marginTop: 3 }}>{stat.label}</Text>
+            </TouchableOpacity>
           ))}
         </View>
 
-        {/* Quick Actions */}
-        <View style={{ paddingHorizontal: 20 }}>
-          <Text style={{ color: COLORS.text, fontSize: 18, fontWeight: 'bold', marginBottom: 12 }}>
-            Quick Actions
-          </Text>
-          <View style={{ gap: 10 }}>
-            {[
-              { icon: User, label: 'Edit Profile', sub: 'Update your photos & info', onPress: () => router.push("/profile-setup") },
-              { icon: Settings, label: 'Account Settings', sub: 'Privacy, notifications & more', onPress: () => {} },
-              { icon: Star, label: 'Switch to Premium', sub: 'Unlock exclusive features', onPress: () => {} },
-            ].map((item, i) => (
-              <TouchableOpacity
-                key={i}
-                onPress={item.onPress}
-                activeOpacity={0.7}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-                  backgroundColor: COLORS.card, borderRadius: 16,
-                  padding: 16, borderWidth: 1, borderColor: COLORS.border,
-                }}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                  <View style={{
-                    width: 40, height: 40, borderRadius: 20,
-                    backgroundColor: 'rgba(230,57,70,0.15)',
-                    alignItems: 'center', justifyContent: 'center',
-                  }}>
-                    <item.icon size={20} color={COLORS.primary} />
-                  </View>
-                  <View>
-                    <Text style={{ color: COLORS.text, fontWeight: '600', fontSize: 15 }}>{item.label}</Text>
-                    <Text style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 2 }}>{item.sub}</Text>
-                  </View>
-                </View>
-                <ChevronRight size={18} color={COLORS.textMuted} />
+        {/* ── Posts Grid ── */}
+        <View style={{ marginTop: 24 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 12 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Grid3x3 size={18} color={C.text} />
+              <Text style={{ color: C.text, fontSize: 17, fontWeight: 'bold' }}>Posts</Text>
+            </View>
+            <Text style={{ color: C.textMuted, fontSize: 13 }}>{mockUser.posts} posts</Text>
+          </View>
+
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 20, gap: 4 }}>
+            {mockPosts.map((uri, i) => (
+              <TouchableOpacity key={i} activeOpacity={0.85}>
+                <Image
+                  source={{ uri }}
+                  style={{ width: GRID_SIZE, height: GRID_SIZE, borderRadius: 10 }}
+                  resizeMode="cover"
+                />
               </TouchableOpacity>
             ))}
           </View>
         </View>
 
-        {/* Danger Zone */}
-        <View style={{ paddingHorizontal: 20, marginTop: 24 }}>
+        {/* ── Quick Actions ── */}
+        <View style={{ paddingHorizontal: 20, marginTop: 28 }}>
+          <Text style={{ color: C.text, fontSize: 17, fontWeight: 'bold', marginBottom: 12 }}>More</Text>
+          <View style={{ gap: 8 }}>
+            {[
+              { icon: Crown, label: 'Go Premium', sub: 'Unlock exclusive features', color: '#F59E0B', onPress: () => {} },
+              { icon: Heart, label: 'My Matches', sub: '42 people vibed with you', color: '#fb7185', onPress: () => {} },
+              { icon: MessageCircle, label: 'My Chats', sub: '18 active conversations', color: '#a855f7', onPress: () => {} },
+              { icon: Shield, label: 'Privacy & Safety', sub: 'Blocked users, visibility', color: '#2ECC71', onPress: () => {} },
+            ].map((item, i) => (
+              <TouchableOpacity
+                key={i}
+                onPress={item.onPress}
+                activeOpacity={0.75}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                  backgroundColor: C.card, borderRadius: 16,
+                  padding: 16, borderWidth: 1, borderColor: C.border,
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <View style={{
+                    width: 42, height: 42, borderRadius: 21,
+                    backgroundColor: item.color + '22',
+                    alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <item.icon size={20} color={item.color} />
+                  </View>
+                  <View>
+                    <Text style={{ color: C.text, fontWeight: '600', fontSize: 15 }}>{item.label}</Text>
+                    <Text style={{ color: C.textMuted, fontSize: 12, marginTop: 1 }}>{item.sub}</Text>
+                  </View>
+                </View>
+                <ChevronRight size={18} color={C.textMuted} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {/* ── Log Out ── */}
+        <View style={{ paddingHorizontal: 20, marginTop: 20, marginBottom: 8 }}>
           <TouchableOpacity
             onPress={() => router.push("/welcome")}
+            activeOpacity={0.8}
             style={{
-              padding: 16, borderRadius: 16, alignItems: 'center',
-              borderWidth: 1.5, borderColor: COLORS.primary,
-              backgroundColor: 'rgba(230,57,70,0.08)',
+              flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
+              padding: 16, borderRadius: 16,
+              borderWidth: 1.5, borderColor: C.primary,
+              backgroundColor: 'rgba(230,57,70,0.07)',
             }}
           >
-            <Text style={{ color: COLORS.primary, fontWeight: '700', fontSize: 15 }}>Log Out</Text>
+            <LogOut size={18} color={C.primary} />
+            <Text style={{ color: C.primary, fontWeight: '700', fontSize: 15 }}>Log Out</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* ── Settings Modal ── */}
+      <Modal visible={settingsVisible} animationType="slide" transparent onRequestClose={() => setSettingsVisible(false)}>
+        <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setSettingsVisible(false)}>
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={e => e.stopPropagation()}
+            style={{
+              position: 'absolute', bottom: 0, left: 0, right: 0,
+              borderTopLeftRadius: 28, borderTopRightRadius: 28,
+              backgroundColor: C.card, padding: 28,
+            }}
+          >
+            {/* Drag handle */}
+            <View style={{ width: 40, height: 4, backgroundColor: C.border, borderRadius: 2, alignSelf: 'center', marginBottom: 22 }} />
+            <Text style={{ color: C.text, fontSize: 22, fontWeight: 'bold', marginBottom: 20 }}>Account Settings</Text>
+
+            <View style={{ gap: 10 }}>
+              {/* Profile Visibility */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: C.cardAlt, borderRadius: 16, padding: 16 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: '#2ECC7122', alignItems: 'center', justifyContent: 'center' }}>
+                    <Lock size={18} color="#2ECC71" />
+                  </View>
+                  <View>
+                    <Text style={{ color: C.text, fontWeight: '600' }}>Profile Visibility</Text>
+                    <Text style={{ color: C.textMuted, fontSize: 12 }}>{profilePublic ? 'Public' : 'Private'}</Text>
+                  </View>
+                </View>
+                <Switch value={profilePublic} onValueChange={setProfilePublic} trackColor={{ false: C.border, true: '#2ECC71' }} thumbColor="#fff" />
+              </View>
+
+              {/* Notifications */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: C.cardAlt, borderRadius: 16, padding: 16 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: '#E6394622', alignItems: 'center', justifyContent: 'center' }}>
+                    <MessageCircle size={18} color="#E63946" />
+                  </View>
+                  <View>
+                    <Text style={{ color: C.text, fontWeight: '600' }}>Notifications</Text>
+                    <Text style={{ color: C.textMuted, fontSize: 12 }}>{notifications ? 'Enabled' : 'Disabled'}</Text>
+                  </View>
+                </View>
+                <Switch value={notifications} onValueChange={setNotifications} trackColor={{ false: C.border, true: C.primary }} thumbColor="#fff" />
+              </View>
+
+              {/* Deactivate */}
+              <TouchableOpacity
+                style={{ backgroundColor: C.cardAlt, borderRadius: 16, padding: 16, alignItems: 'center' }}
+                onPress={() => { setSettingsVisible(false); }}
+              >
+                <Text style={{ color: C.textMuted, fontWeight: '600' }}>Deactivate Account</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={{ height: 20 }} />
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
