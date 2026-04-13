@@ -1,335 +1,72 @@
-
-// import { useRouter } from "expo-router";
-// import {
-//   Bell,
-//   Crown,
-//   Eye,
-//   EyeOff,
-//   LogOut,
-//   Menu,
-//   Settings,
-//   X,
-// } from "lucide-react-native";
-// import { useColorScheme } from "nativewind";
-// import { useState } from "react";
-// import {
-//   Modal,
-//   Platform,
-//   StatusBar as RNStatusBar,
-//   Switch,
-//   Text,
-//   TouchableOpacity,
-//   View,
-// } from "react-native";
-// import { LovrHubLogo } from "./LovrHubLogo";
-
-// type HeaderProps = {
-//   notificationCount?: number;
-//   showNotifications?: boolean;
-//   isLoggedIn?: boolean;
-// };
-
-// export function Header({
-//   notificationCount = 0,
-//   showNotifications = true,
-//   isLoggedIn = true,
-// }: HeaderProps) {
-//   const [menuOpen, setMenuOpen] = useState(false);
-//   const [isPublic, setIsPublic] = useState(true);
-//   const { colorScheme, setColorScheme } = useColorScheme();
-//   const router = useRouter();
-
-//   const isDark = colorScheme === "dark";
-//   const STATUS_BAR_HEIGHT = Platform.OS === 'android'
-//     ? (RNStatusBar.currentHeight ?? 24)
-//     : 44;
-
-//   const handleLogout = () => {
-//     setMenuOpen(false);
-//     router.push("/welcome");
-//   };
-
-//   const handleAccountSettings = () => {
-//     setMenuOpen(false);
-//     router.push("/(tabs)/account");
-//   };
-
-//   const handlePremium = () => {
-//     setMenuOpen(false);
-//     alert("Premium features coming soon! 👑");
-//   };
-
-//   return (
-//     <>
-//       {/* ✅ All layout via inline style, no className for layout */}
-//       <View
-//         style={{
-//           flexDirection: 'row',
-//           alignItems: 'center',
-//           justifyContent: 'space-between',
-//           paddingHorizontal: 24,
-//           paddingTop: STATUS_BAR_HEIGHT + 12,
-//           paddingBottom: 16,
-//           backgroundColor: isDark ? "#1c1917" : "#FFF8F5",
-//         }}
-//       >
-//         {/* Logo */}
-//         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-//           <LovrHubLogo size={40} useGradient={true} />
-//           <Text style={{ fontSize: 20, fontWeight: 'bold', color: isDark ? "#fafaf9" : "#2B2B2B" }}>
-//             LovrHub
-//           </Text>
-//         </View>
-
-//         {/* Right Actions */}
-//         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-//           {showNotifications && (
-//             <TouchableOpacity style={{ position: 'relative' }}>
-//               <Bell color={isDark ? "#fafaf9" : "#2B2B2B"} size={24} />
-//               {notificationCount > 0 && (
-//                 <View
-//                   style={{
-//                     position: 'absolute',
-//                     top: -4,
-//                     right: -4,
-//                     width: 20,
-//                     height: 20,
-//                     borderRadius: 10,
-//                     backgroundColor: "#E63946",
-//                     alignItems: 'center',
-//                     justifyContent: 'center',
-//                   }}
-//                 >
-//                   <Text style={{ color: 'white', fontSize: 10, fontWeight: 'bold' }}>
-//                     {notificationCount > 9 ? "9+" : notificationCount}
-//                   </Text>
-//                 </View>
-//               )}
-//             </TouchableOpacity>
-//           )}
-
-//           <TouchableOpacity onPress={() => setMenuOpen(true)}>
-//             <Menu color={isDark ? "#fafaf9" : "#2B2B2B"} size={24} />
-//           </TouchableOpacity>
-//         </View>
-//       </View>
-
-//       {/* Hamburger Menu Modal */}
-//       <Modal
-//         visible={menuOpen}
-//         animationType="slide"
-//         transparent={true}
-//         onRequestClose={() => setMenuOpen(false)}
-//       >
-//         <TouchableOpacity
-//           style={{ flex: 1 }}
-//           activeOpacity={1}
-//           onPress={() => setMenuOpen(false)}
-//         >
-//           <TouchableOpacity
-//             activeOpacity={1}
-//             style={{
-//               position: 'absolute',
-//               bottom: 0,
-//               left: 0,
-//               right: 0,
-//               borderTopLeftRadius: 24,
-//               borderTopRightRadius: 24,
-//               padding: 24,
-//               backgroundColor: isDark ? "#292524" : "#ffffff",
-//             }}
-//             onPress={(e) => e.stopPropagation()}
-//           >
-//             {/* Close Button */}
-//             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-//               <Text style={{ fontSize: 24, fontWeight: 'bold', color: isDark ? "#fafaf9" : "#2B2B2B" }}>
-//                 Menu
-//               </Text>
-//               <TouchableOpacity onPress={() => setMenuOpen(false)}>
-//                 <X color={isDark ? "#fafaf9" : "#2B2B2B"} size={24} />
-//               </TouchableOpacity>
-//             </View>
-
-//             <View style={{ gap: 12 }}>
-//               {/* Theme Toggle */}
-//               <View
-//                 style={{
-//                   flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-//                   padding: 16, borderRadius: 16,
-//                   backgroundColor: isDark ? "#3f3f46" : "#FFF8F5",
-//                 }}
-//               >
-//                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-//                   <View
-//                     style={{
-//                       width: 40, height: 40, borderRadius: 20,
-//                       alignItems: 'center', justifyContent: 'center',
-//                       backgroundColor: isDark ? "#E63946" : "#F4C430",
-//                     }}
-//                   >
-//                     <Text style={{ fontSize: 20 }}>{isDark ? '🌙' : '☀️'}</Text>
-//                   </View>
-//                   <View>
-//                     <Text style={{ fontWeight: '600', color: isDark ? "#fafaf9" : "#2B2B2B" }}>
-//                       {isDark ? "Dark Mode" : "Light Mode"}
-//                     </Text>
-//                     <Text style={{ fontSize: 12, color: isDark ? "#a8a29e" : "#78716c" }}>
-//                       Switch theme
-//                     </Text>
-//                   </View>
-//                 </View>
-//                 <Switch
-//                   value={isDark}
-//                   onValueChange={(value) => setColorScheme(value ? "dark" : "light")}
-//                   trackColor={{ false: "#d4d4d8", true: "#E63946" }}
-//                   thumbColor="#ffffff"
-//                 />
-//               </View>
-
-//               {/* Account Settings */}
-//               <TouchableOpacity
-//                 style={{
-//                   flexDirection: 'row', alignItems: 'center', gap: 12,
-//                   padding: 16, borderRadius: 16,
-//                   backgroundColor: isDark ? "#3f3f46" : "#FFF8F5",
-//                 }}
-//                 onPress={handleAccountSettings}
-//               >
-//                 <View style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: "#FF8C6B" }}>
-//                   <Settings color="#ffffff" size={20} />
-//                 </View>
-//                 <View style={{ flex: 1 }}>
-//                   <Text style={{ fontWeight: '600', color: isDark ? "#fafaf9" : "#2B2B2B" }}>Account Settings</Text>
-//                   <Text style={{ fontSize: 12, color: isDark ? "#a8a29e" : "#78716c" }}>Manage your account</Text>
-//                 </View>
-//               </TouchableOpacity>
-
-//               {/* Profile Visibility */}
-//               <View
-//                 style={{
-//                   flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-//                   padding: 16, borderRadius: 16,
-//                   backgroundColor: isDark ? "#3f3f46" : "#FFF8F5",
-//                 }}
-//               >
-//                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-//                   <View style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: "#2ECC71" }}>
-//                     {isPublic ? <Eye color="#ffffff" size={20} /> : <EyeOff color="#ffffff" size={20} />}
-//                   </View>
-//                   <View>
-//                     <Text style={{ fontWeight: '600', color: isDark ? "#fafaf9" : "#2B2B2B" }}>Profile Visibility</Text>
-//                     <Text style={{ fontSize: 12, color: isDark ? "#a8a29e" : "#78716c" }}>{isPublic ? "Public" : "Private"}</Text>
-//                   </View>
-//                 </View>
-//                 <Switch
-//                   value={isPublic}
-//                   onValueChange={setIsPublic}
-//                   trackColor={{ false: "#d4d4d8", true: "#2ECC71" }}
-//                   thumbColor="#ffffff"
-//                 />
-//               </View>
-
-//               {/* Switch to Premium */}
-//               <TouchableOpacity
-//                 style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderRadius: 16, backgroundColor: "#F4C430" }}
-//                 onPress={handlePremium}
-//               >
-//                 <View style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: "#ffffff" }}>
-//                   <Crown color="#F4C430" size={20} />
-//                 </View>
-//                 <View style={{ flex: 1 }}>
-//                   <Text style={{ fontWeight: 'bold', color: 'white' }}>Switch to Premium</Text>
-//                   <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.9)' }}>Unlock exclusive features</Text>
-//                 </View>
-//               </TouchableOpacity>
-
-//               {/* Logout */}
-//               {isLoggedIn && (
-//                 <TouchableOpacity
-//                   style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderRadius: 16, backgroundColor: "#E63946" }}
-//                   onPress={handleLogout}
-//                 >
-//                   <View style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: "#ffffff" }}>
-//                     <LogOut color="#E63946" size={20} />
-//                   </View>
-//                   <View style={{ flex: 1 }}>
-//                     <Text style={{ fontWeight: 'bold', color: 'white' }}>Logout</Text>
-//                     <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.9)' }}>Sign out of your account</Text>
-//                   </View>
-//                 </TouchableOpacity>
-//               )}
-//             </View>
-
-//             <View style={{ height: 32 }} />
-//           </TouchableOpacity>
-//         </TouchableOpacity>
-//       </Modal>
-//     </>
-//   );
-// }
-
-import { useRouter } from "expo-router";
+import { useNotifications } from '@/context/NotificationContext';
+import { useTheme } from '@/hooks/useTheme';
+import { useRouter } from 'expo-router';
+import { useColorScheme } from 'nativewind';
 import {
   Bell,
   Crown,
   Eye,
   EyeOff,
+  Heart,
   LogOut,
   Menu,
+  MessageCircle,
   Settings,
+  Users,
   X,
-} from "lucide-react-native";
-import { useColorScheme } from "nativewind";
-import { useState } from "react";
+} from 'lucide-react-native';
+import { useState } from 'react';
 import {
+  Image,
   Modal,
   Platform,
+  ScrollView,
   StatusBar as RNStatusBar,
   Switch,
   Text,
   TouchableOpacity,
   View,
-} from "react-native";
-import { LovrHubLogo } from "./LovrHubLogo";
+} from 'react-native';
+import { LovrHubLogo } from './LovrHubLogo';
 
 type HeaderProps = {
-  notificationCount?: number;
+  notificationCount?: number; // kept for backwards compat; ignored — context drives the badge
   showNotifications?: boolean;
   isLoggedIn?: boolean;
 };
 
-export function Header({
-  notificationCount = 0,
-  showNotifications = true,
-  isLoggedIn = true,
-}: HeaderProps) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [isPublic, setIsPublic] = useState(true);
-  const { colorScheme, toggleColorScheme } = useColorScheme(); // ✅ toggleColorScheme instead of setColorScheme
+const notifIconMap: Record<string, string> = {
+  like:          '❤️',
+  comment:       '💬',
+  follow:        '👥',
+  join_request:  '🔔',
+  join_approved: '✅',
+};
+
+export function Header({ showNotifications = true, isLoggedIn = true }: HeaderProps) {
+  const T = useTheme();
   const router = useRouter();
+  const { notifications, unreadCount, markAllRead, markRead } = useNotifications();
 
-  const isDark = colorScheme === "dark";
-  const STATUS_BAR_HEIGHT = Platform.OS === 'android'
-    ? (RNStatusBar.currentHeight ?? 24)
-    : 44;
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [isPublic, setIsPublic] = useState(true);
 
-  const handleLogout = () => {
-    setMenuOpen(false);
-    router.push("/welcome");
-  };
+  const STATUS_BAR_HEIGHT =
+    Platform.OS === 'android' ? (RNStatusBar.currentHeight ?? 24) : 44;
 
-  const handleAccountSettings = () => {
-    setMenuOpen(false);
-    router.push("/(tabs)/account");
-  };
+  const handleLogout = () => { setMenuOpen(false); router.push('/welcome'); };
+  const handleAccount = () => { setMenuOpen(false); router.push('/(tabs)/account'); };
+  const handlePremium = () => { setMenuOpen(false); alert('Premium features coming soon! 👑'); };
 
-  const handlePremium = () => {
-    setMenuOpen(false);
-    alert("Premium features coming soon! 👑");
+  const openNotifications = () => {
+    setNotifOpen(true);
+    markAllRead();
   };
 
   return (
     <>
+      {/* ── Top Bar ─────────────────────────────────────────────────────── */}
       <View
         style={{
           flexDirection: 'row',
@@ -338,191 +75,222 @@ export function Header({
           paddingHorizontal: 24,
           paddingTop: STATUS_BAR_HEIGHT + 12,
           paddingBottom: 16,
-          backgroundColor: isDark ? "#1c1917" : "#FFF8F5",
+          backgroundColor: T.bg,
         }}
       >
         {/* Logo */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <LovrHubLogo size={40} useGradient={true} />
-          <Text style={{ fontSize: 20, fontWeight: 'bold', color: isDark ? "#fafaf9" : "#2B2B2B" }}>
+          <LovrHubLogo size={38} useGradient />
+          <Text style={{ fontSize: 20, fontWeight: '800', color: T.text, letterSpacing: 0.3 }}>
             LovrHub
           </Text>
         </View>
 
-        {/* Right Actions */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+        {/* Right actions */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
           {showNotifications && (
-            <TouchableOpacity style={{ position: 'relative' }}>
-              <Bell color={isDark ? "#fafaf9" : "#2B2B2B"} size={24} />
-              {notificationCount > 0 && (
-                <View
-                  style={{
-                    position: 'absolute', top: -4, right: -4,
-                    width: 20, height: 20, borderRadius: 10,
-                    backgroundColor: "#E63946",
-                    alignItems: 'center', justifyContent: 'center',
-                  }}
-                >
-                  <Text style={{ color: 'white', fontSize: 10, fontWeight: 'bold' }}>
-                    {notificationCount > 9 ? "9+" : notificationCount}
+            <TouchableOpacity
+              onPress={openNotifications}
+              style={{ position: 'relative' }}
+            >
+              <Bell color={T.text} size={24} />
+              {unreadCount > 0 && (
+                <View style={{
+                  position: 'absolute', top: -4, right: -4,
+                  width: 18, height: 18, borderRadius: 9,
+                  backgroundColor: T.primary,
+                  alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <Text style={{ color: '#fff', fontSize: 10, fontWeight: 'bold' }}>
+                    {unreadCount > 9 ? '9+' : unreadCount}
                   </Text>
                 </View>
               )}
             </TouchableOpacity>
           )}
-
           <TouchableOpacity onPress={() => setMenuOpen(true)}>
-            <Menu color={isDark ? "#fafaf9" : "#2B2B2B"} size={24} />
+            <Menu color={T.text} size={24} />
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Hamburger Menu Modal */}
-      <Modal
-        visible={menuOpen}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setMenuOpen(false)}
-      >
-        <TouchableOpacity
-          style={{ flex: 1 }}
-          activeOpacity={1}
-          onPress={() => setMenuOpen(false)}
-        >
+      {/* ── Hamburger Menu Modal ─────────────────────────────────────────── */}
+      <Modal visible={menuOpen} animationType="slide" transparent onRequestClose={() => setMenuOpen(false)}>
+        <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setMenuOpen(false)}>
           <TouchableOpacity
             activeOpacity={1}
             style={{
               position: 'absolute', bottom: 0, left: 0, right: 0,
-              borderTopLeftRadius: 24, borderTopRightRadius: 24,
-              padding: 24,
-              backgroundColor: isDark ? "#292524" : "#ffffff",
+              borderTopLeftRadius: 28, borderTopRightRadius: 28,
+              padding: 28, backgroundColor: T.card,
             }}
-            onPress={(e) => e.stopPropagation()}
+            onPress={e => e.stopPropagation()}
           >
-            {/* Close Button */}
+            {/* Drag handle */}
+            <View style={{ width: 40, height: 4, backgroundColor: T.border, borderRadius: 2, alignSelf: 'center', marginBottom: 22 }} />
+
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-              <Text style={{ fontSize: 24, fontWeight: 'bold', color: isDark ? "#fafaf9" : "#2B2B2B" }}>
-                Menu
-              </Text>
+              <Text style={{ fontSize: 22, fontWeight: 'bold', color: T.text }}>Menu</Text>
               <TouchableOpacity onPress={() => setMenuOpen(false)}>
-                <X color={isDark ? "#fafaf9" : "#2B2B2B"} size={24} />
+                <X color={T.textMuted} size={22} />
               </TouchableOpacity>
             </View>
 
-            <View style={{ gap: 12 }}>
-
+            <View style={{ gap: 10 }}>
               {/* Theme Toggle */}
-              <View
-                style={{
-                  flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-                  padding: 16, borderRadius: 16,
-                  backgroundColor: isDark ? "#3f3f46" : "#FFF8F5",
-                }}
-              >
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderRadius: 16, backgroundColor: T.cardAlt }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                  <View style={{
-                    width: 40, height: 40, borderRadius: 20,
-                    alignItems: 'center', justifyContent: 'center',
-                    backgroundColor: isDark ? "#E63946" : "#F4C430",
-                  }}>
-                    <Text style={{ fontSize: 20 }}>{isDark ? '🌙' : '☀️'}</Text>
+                  <View style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: T.isDark ? '#E63946' : '#F4C430' }}>
+                    <Text style={{ fontSize: 20 }}>{T.isDark ? '🌙' : '☀️'}</Text>
                   </View>
                   <View>
-                    <Text style={{ fontWeight: '600', color: isDark ? "#fafaf9" : "#2B2B2B" }}>
-                      {isDark ? "Dark Mode" : "Light Mode"}
-                    </Text>
-                    <Text style={{ fontSize: 12, color: isDark ? "#a8a29e" : "#78716c" }}>
-                      Switch theme
-                    </Text>
+                    <Text style={{ fontWeight: '600', color: T.text }}>{T.isDark ? 'Dark Mode' : 'Light Mode'}</Text>
+                    <Text style={{ fontSize: 12, color: T.textMuted }}>Switch theme</Text>
                   </View>
                 </View>
-                {/* ✅ FIXED: toggleColorScheme instead of setColorScheme */}
-                <Switch
-                  value={isDark}
-                  onValueChange={toggleColorScheme}
-                  trackColor={{ false: "#d4d4d8", true: "#E63946" }}
-                  thumbColor="#ffffff"
-                />
+                <ThemeSwitch />
               </View>
 
               {/* Account Settings */}
-              <TouchableOpacity
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 12,
-                  padding: 16, borderRadius: 16,
-                  backgroundColor: isDark ? "#3f3f46" : "#FFF8F5",
-                }}
-                onPress={handleAccountSettings}
-              >
-                <View style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: "#FF8C6B" }}>
-                  <Settings color="#ffffff" size={20} />
+              <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderRadius: 16, backgroundColor: T.cardAlt }} onPress={handleAccount}>
+                <View style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FF8C6B22' }}>
+                  <Settings color="#FF8C6B" size={20} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontWeight: '600', color: isDark ? "#fafaf9" : "#2B2B2B" }}>Account Settings</Text>
-                  <Text style={{ fontSize: 12, color: isDark ? "#a8a29e" : "#78716c" }}>Manage your account</Text>
+                  <Text style={{ fontWeight: '600', color: T.text }}>Account Settings</Text>
+                  <Text style={{ fontSize: 12, color: T.textMuted }}>Manage your account</Text>
                 </View>
               </TouchableOpacity>
 
               {/* Profile Visibility */}
-              <View
-                style={{
-                  flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-                  padding: 16, borderRadius: 16,
-                  backgroundColor: isDark ? "#3f3f46" : "#FFF8F5",
-                }}
-              >
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderRadius: 16, backgroundColor: T.cardAlt }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                  <View style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: "#2ECC71" }}>
-                    {isPublic ? <Eye color="#ffffff" size={20} /> : <EyeOff color="#ffffff" size={20} />}
+                  <View style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: '#2ECC7122' }}>
+                    {isPublic ? <Eye color="#2ECC71" size={20} /> : <EyeOff color="#2ECC71" size={20} />}
                   </View>
                   <View>
-                    <Text style={{ fontWeight: '600', color: isDark ? "#fafaf9" : "#2B2B2B" }}>Profile Visibility</Text>
-                    <Text style={{ fontSize: 12, color: isDark ? "#a8a29e" : "#78716c" }}>{isPublic ? "Public" : "Private"}</Text>
+                    <Text style={{ fontWeight: '600', color: T.text }}>Profile Visibility</Text>
+                    <Text style={{ fontSize: 12, color: T.textMuted }}>{isPublic ? 'Public' : 'Private'}</Text>
                   </View>
                 </View>
-                <Switch
-                  value={isPublic}
-                  onValueChange={setIsPublic}
-                  trackColor={{ false: "#d4d4d8", true: "#2ECC71" }}
-                  thumbColor="#ffffff"
-                />
+                <Switch value={isPublic} onValueChange={setIsPublic} trackColor={{ false: T.border, true: '#2ECC71' }} thumbColor="#fff" />
               </View>
 
-              {/* Switch to Premium */}
+              {/* Premium */}
               <TouchableOpacity
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderRadius: 16, backgroundColor: "#F4C430" }}
                 onPress={handlePremium}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderRadius: 16, backgroundColor: '#F59E0B' }}
               >
-                <View style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: "#ffffff" }}>
-                  <Crown color="#F4C430" size={20} />
+                <View style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.25)' }}>
+                  <Crown color="#fff" size={20} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontWeight: 'bold', color: 'white' }}>Switch to Premium</Text>
-                  <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.9)' }}>Unlock exclusive features</Text>
+                  <Text style={{ fontWeight: 'bold', color: '#fff' }}>Switch to Premium</Text>
+                  <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.85)' }}>Unlock exclusive features</Text>
                 </View>
               </TouchableOpacity>
 
               {/* Logout */}
               {isLoggedIn && (
                 <TouchableOpacity
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderRadius: 16, backgroundColor: "#E63946" }}
                   onPress={handleLogout}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderRadius: 16, backgroundColor: T.primary }}
                 >
-                  <View style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: "#ffffff" }}>
-                    <LogOut color="#E63946" size={20} />
+                  <View style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.2)' }}>
+                    <LogOut color="#fff" size={20} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontWeight: 'bold', color: 'white' }}>Logout</Text>
-                    <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.9)' }}>Sign out of your account</Text>
+                    <Text style={{ fontWeight: 'bold', color: '#fff' }}>Logout</Text>
+                    <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.85)' }}>Sign out of your account</Text>
                   </View>
                 </TouchableOpacity>
               )}
             </View>
+            <View style={{ height: 28 }} />
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
 
-            <View style={{ height: 32 }} />
+      {/* ── Notifications Panel ───────────────────────────────────────────── */}
+      <Modal visible={notifOpen} animationType="slide" transparent onRequestClose={() => setNotifOpen(false)}>
+        <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setNotifOpen(false)}>
+          <TouchableOpacity
+            activeOpacity={1}
+            style={{
+              position: 'absolute', bottom: 0, left: 0, right: 0,
+              borderTopLeftRadius: 28, borderTopRightRadius: 28,
+              backgroundColor: T.card, maxHeight: '80%',
+            }}
+            onPress={e => e.stopPropagation()}
+          >
+            <View style={{ padding: 28, paddingBottom: 0 }}>
+              <View style={{ width: 40, height: 4, backgroundColor: T.border, borderRadius: 2, alignSelf: 'center', marginBottom: 22 }} />
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+                <Text style={{ color: T.text, fontSize: 22, fontWeight: 'bold' }}>Notifications</Text>
+                <TouchableOpacity onPress={() => setNotifOpen(false)}>
+                  <X color={T.textMuted} size={22} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40, gap: 10 }}>
+              {notifications.length === 0 && (
+                <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                  <Bell size={40} color={T.border} />
+                  <Text style={{ color: T.textMuted, marginTop: 12, fontSize: 15 }}>No notifications yet</Text>
+                </View>
+              )}
+              {notifications.map(n => (
+                <TouchableOpacity
+                  key={n.id}
+                  onPress={() => markRead(n.id)}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 14,
+                    backgroundColor: n.read ? T.card : T.cardAlt,
+                    borderRadius: 16, padding: 14,
+                    borderWidth: n.read ? 0 : 1, borderColor: T.primary + '40',
+                  }}
+                >
+                  {n.avatar ? (
+                    <Image source={{ uri: n.avatar }} style={{ width: 44, height: 44, borderRadius: 22 }} />
+                  ) : (
+                    <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: T.cardAlt, alignItems: 'center', justifyContent: 'center' }}>
+                      {n.type === 'like'          && <Heart size={22} color={T.primary} />}
+                      {n.type === 'comment'       && <MessageCircle size={22} color="#a855f7" />}
+                      {n.type === 'follow'        && <Users size={22} color="#2ECC71" />}
+                      {n.type === 'join_request'  && <Bell size={22} color="#F59E0B" />}
+                      {n.type === 'join_approved' && <Crown size={22} color="#F59E0B" />}
+                    </View>
+                  )}
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: T.text, fontSize: 14, fontWeight: n.read ? '400' : '600', lineHeight: 20 }}>
+                      {n.message}
+                    </Text>
+                    <Text style={{ color: T.textMuted, fontSize: 12, marginTop: 3 }}>{n.time}</Text>
+                  </View>
+                  {!n.read && (
+                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: T.primary }} />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
     </>
+  );
+}
+
+// Inline animated theme switch
+function ThemeSwitch() {
+  const { colorScheme, toggleColorScheme } = useColorScheme();
+  const isDark = colorScheme === 'dark';
+  return (
+    <Switch
+      value={isDark}
+      onValueChange={toggleColorScheme}
+      trackColor={{ false: '#d4d4d8', true: '#E63946' }}
+      thumbColor="#fff"
+    />
   );
 }

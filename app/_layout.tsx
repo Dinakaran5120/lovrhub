@@ -66,30 +66,35 @@
 // }
 
 
+import { SplashScreen } from '@/components/SplashScreen';
 import { ThemeProvider } from '@/components/ThemeProvider';
+import { NotificationProvider } from '@/context/NotificationContext';
 import '@/global.css';
 import { Stack } from 'expo-router';
+import { useState } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import '../reanimated';
 
-// StatusBar is managed inside ThemeProvider so it automatically
-// reflects light/dark theme changes without a separate import here.
-
 export default function RootLayout() {
+  const [splashDone, setSplashDone] = useState(false);
+
   return (
     <SafeAreaProvider>
-      <ThemeProvider>
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="welcome" />
-          <Stack.Screen name="login" />
-          <Stack.Screen name="signup" />
-          <Stack.Screen name="signup-phone" />
-          <Stack.Screen name="otp-verify" />
-          <Stack.Screen name="profile-setup" />
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="chat-detail" />
-        </Stack>
-      </ThemeProvider>
+      <NotificationProvider>
+        <ThemeProvider>
+          {!splashDone && <SplashScreen onFinish={() => setSplashDone(true)} />}
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="welcome" />
+            <Stack.Screen name="login" />
+            <Stack.Screen name="signup" />
+            <Stack.Screen name="signup-phone" />
+            <Stack.Screen name="otp-verify" />
+            <Stack.Screen name="profile-setup" />
+            <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="chat-detail" />
+          </Stack>
+        </ThemeProvider>
+      </NotificationProvider>
     </SafeAreaProvider>
   );
 }
