@@ -1014,10 +1014,10 @@
 
 
 import { Header } from "@/components/Header";
+import { useTheme } from "@/hooks/useTheme";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { Camera, ChevronRight, Crown, Grid3x3, Heart, Lock, LogOut, MessageCircle, Settings, Shield, Star, User } from "lucide-react-native";
-import { useColorScheme } from 'nativewind';
 import { useState } from "react";
 import { Dimensions, Image, Modal, ScrollView, Switch, Text, TouchableOpacity, View } from "react-native";
 
@@ -1048,18 +1048,7 @@ const mockPosts = [
 ];
 
 export default function AccountScreen() {
-  const { colorScheme } = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const C = {
-    bg: isDark ? '#1c1917' : '#FFF8F5',
-    card: isDark ? '#292524' : '#ffffff',
-    text: isDark ? '#fafaf9' : '#2B2B2B',
-    textMuted: isDark ? '#a8a29e' : '#78716c',
-    border: isDark ? '#44403c' : '#f0e6e1',
-    primary: '#E63946',
-    cardAlt: isDark ? '#3f3f46' : '#f5f0ee',
-  };
-
+  const C = useTheme();
   const router = useRouter();
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [profilePublic, setProfilePublic] = useState(true);

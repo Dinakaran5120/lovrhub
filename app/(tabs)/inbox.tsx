@@ -353,9 +353,9 @@
 
 
 import { Header } from "@/components/Header";
+import { useTheme } from "@/hooks/useTheme";
 import { useRouter } from "expo-router";
 import { Heart, MessageCircle, Search, Send, Users } from "lucide-react-native";
-import { useColorScheme } from 'nativewind';
 import { useState } from "react";
 import { Image, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 
@@ -396,17 +396,8 @@ const CHATS: Chat[] = [
 ];
 
 export default function InboxScreen() {
-  const { colorScheme } = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const COLORS = {
-    background: isDark ? '#1c1917' : '#FFF8F5',
-    card: isDark ? '#292524' : '#ffffff',
-    primary: '#E63946',
-    border: isDark ? '#44403c' : '#f0e6e1',
-    text: isDark ? '#fafaf9' : '#2B2B2B',
-    textMuted: isDark ? '#a8a29e' : '#78716c',
-    online: '#2ECC71',
-  };
+  const T = useTheme();
+  const COLORS = { background: T.bg, card: T.card, primary: T.primary, border: T.border, text: T.text, textMuted: T.textMuted, online: T.online };
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTab, setSelectedTab] = useState<"all" | "unread">("all");

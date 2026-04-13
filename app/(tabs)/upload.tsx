@@ -842,8 +842,8 @@
 // }
 
 import { Header } from '@/components/Header';
+import { useTheme } from '@/hooks/useTheme';
 import { Camera, ChevronLeft, ChevronRight, Crop, Image as ImageIcon, Video } from 'lucide-react-native';
-import { useColorScheme } from 'nativewind';
 import { useState } from 'react';
 import { Alert, Dimensions, Image, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
@@ -863,16 +863,8 @@ const mockImages = [
 const moods: Mood[] = ['😔 Lonely', '🙂 Happy', '😵 Stressed', '💔 Heartbroken', '🔥 Adult feelings'];
 
 export default function UploadScreen() {
-  const { colorScheme } = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const COLORS = {
-    background: isDark ? '#1c1917' : '#FFF8F5',
-    card: isDark ? '#292524' : '#ffffff',
-    primary: '#E63946',
-    border: isDark ? '#44403c' : '#f0e6e1',
-    text: isDark ? '#fafaf9' : '#2B2B2B',
-    textMuted: isDark ? '#a8a29e' : '#78716c',
-  };
+  const T = useTheme();
+  const COLORS = { background: T.bg, card: T.card, primary: T.primary, border: T.border, text: T.text, textMuted: T.textMuted };
 
   const [step, setStep] = useState<UploadStep>('select');
   const [media, setMedia] = useState<MediaItem[]>([]);

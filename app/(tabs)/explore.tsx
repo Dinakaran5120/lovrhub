@@ -580,21 +580,37 @@
 // }
 
 import { Header } from '@/components/Header';
+import { useNotifications } from '@/context/NotificationContext';
+import { useTheme } from '@/hooks/useTheme';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Bookmark, Check, Compass, Heart, Lock, MessageCircle, Plus, Search, Users, X } from 'lucide-react-native';
-import { useColorScheme } from 'nativewind';
+import { Check, Compass, Heart, Lock, MessageCircle, Plus, Search, Send, Users, X } from 'lucide-react-native';
 import { useState } from 'react';
-import { Modal, ScrollView, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, ScrollView, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+type MoodComment = { id: string; text: string; time: string };
+type MoodItem = {
+  id: string; emoji: string; mood: string; text: string; time: string;
+  reactions: { relate: number; comments: number };
+  liked: boolean;
+  comments: MoodComment[];
+};
+type Community = {
+  id: string; name: string; description: string;
+  members: number; emoji: string; isPrivate: boolean;
+  joined: boolean; requested: boolean;
+};
 
 // ── Static data ──────────────────────────────────────────────────────────────
 
-const mockMoods = [
-  { id: '1', emoji: '😔', mood: 'Lonely', text: "Sometimes I feel like I'm the only one who truly understands what it's like to crave connection but fear rejection at the same time.", time: '2m ago', reactions: { relate: 42, respond: 8, save: 12 } },
-  { id: '2', emoji: '💔', mood: 'Heartbroken', text: "It's been 3 months and I still check their Instagram every day. When does it stop hurting?", time: '15m ago', reactions: { relate: 156, respond: 34, save: 23 } },
-  { id: '3', emoji: '🙂', mood: 'Happy', text: "Had the best first date today! We talked for 4 hours straight and didn't even notice the time passing. Feeling hopeful for the first time in months 💕", time: '1h ago', reactions: { relate: 89, respond: 21, save: 45 } },
-  { id: '4', emoji: '😵', mood: 'Stressed', text: "Juggling three different conversations and I have no idea what I'm doing. Why is modern dating so complicated?", time: '2h ago', reactions: { relate: 203, respond: 67, save: 18 } },
-  { id: '5', emoji: '🔥', mood: 'Adult feelings', text: "Is it just me or does anyone else get butterflies when you see that 'typing...' notification from your crush?", time: '3h ago', reactions: { relate: 312, respond: 45, save: 89 } },
-  { id: '6', emoji: '😔', mood: 'Lonely', text: "Friday night and all my friends are out with their partners. Just me and Netflix again. Starting to wonder if I'll ever find my person.", time: '4h ago', reactions: { relate: 178, respond: 52, save: 34 } },
+const initialMoods: MoodItem[] = [
+  { id: '1', emoji: '😔', mood: 'Lonely', text: "Sometimes I feel like I'm the only one who truly understands what it's like to crave connection but fear rejection at the same time.", time: '2m ago', reactions: { relate: 42, comments: 8 }, liked: false, comments: [{ id: 'c1', text: 'You're not alone 💕', time: '1m ago' }, { id: 'c2', text: 'Same here, sending hugs', time: '30s ago' }] },
+  { id: '2', emoji: '💔', mood: 'Heartbroken', text: "It's been 3 months and I still check their Instagram every day. When does it stop hurting?", time: '15m ago', reactions: { relate: 156, comments: 34 }, liked: false, comments: [{ id: 'c3', text: 'It gets better, I promise 🌸', time: '10m ago' }] },
+  { id: '3', emoji: '🙂', mood: 'Happy', text: "Had the best first date today! We talked for 4 hours straight and didn't even notice the time passing. Feeling hopeful 💕", time: '1h ago', reactions: { relate: 89, comments: 21 }, liked: false, comments: [] },
+  { id: '4', emoji: '😵', mood: 'Stressed', text: "Juggling three different conversations and I have no idea what I'm doing. Why is modern dating so complicated?", time: '2h ago', reactions: { relate: 203, comments: 67 }, liked: false, comments: [{ id: 'c4', text: 'Felt this 😅', time: '1h ago' }] },
+  { id: '5', emoji: '🔥', mood: 'Adult feelings', text: "Is it just me or does anyone else get butterflies when you see that 'typing...' notification from your crush?", time: '3h ago', reactions: { relate: 312, comments: 45 }, liked: false, comments: [] },
+  { id: '6', emoji: '😔', mood: 'Lonely', text: "Friday night and all my friends are out with their partners. Just me and Netflix again.", time: '4h ago', reactions: { relate: 178, comments: 52 }, liked: false, comments: [] },
 ];
 
 const moods = [
@@ -613,12 +629,6 @@ const moodTagColors: Record<string, { bg: string; text: string }> = {
   'Adult feelings': { bg: '#fed7aa', text: '#9a3412' },
 };
 
-type Community = {
-  id: string; name: string; description: string;
-  members: number; emoji: string; isPrivate: boolean;
-  joined: boolean; requested: boolean;
-};
-
 const initialCommunities: Community[] = [
   { id: '1', name: 'Night Owls', description: 'For those who come alive after midnight', members: 2840, emoji: '🦉', isPrivate: false, joined: true, requested: false },
   { id: '2', name: 'Book & Coffee Lovers', description: 'Discuss your latest read over a virtual latte', members: 1593, emoji: '📚', isPrivate: false, joined: false, requested: false },
@@ -631,23 +641,17 @@ const initialCommunities: Community[] = [
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function ExploreScreen() {
-  const { colorScheme } = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const C = {
-    bg: isDark ? '#1c1917' : '#FFF8F5',
-    card: isDark ? '#292524' : '#ffffff',
-    cardAlt: isDark ? '#3f3f46' : '#f5f0ee',
-    text: isDark ? '#fafaf9' : '#2B2B2B',
-    textMuted: isDark ? '#a8a29e' : '#78716c',
-    border: isDark ? '#44403c' : '#f0e6e1',
-    primary: '#E63946',
-    input: isDark ? '#1a1a1a' : '#f3f4f6',
-  };
+  const C = useTheme();
+  const { addNotification } = useNotifications();
 
   // Mood Space state
   const [selectedMood, setSelectedMood] = useState<string | null>(null);
   const [moodText, setMoodText] = useState('');
-  const [feedData, setFeedData] = useState(mockMoods);
+  const [feedData, setFeedData] = useState<MoodItem[]>(initialMoods);
+
+  // Comment modal state
+  const [commentTarget, setCommentTarget] = useState<MoodItem | null>(null);
+  const [newComment, setNewComment] = useState('');
 
   // Communities state
   const [activeTab, setActiveTab] = useState<'mood' | 'communities'>('mood');
@@ -663,20 +667,63 @@ export default function ExploreScreen() {
 
   const handleShare = () => {
     if (!selectedMood || !moodText.trim()) return;
-    setFeedData([{
+    const newItem: MoodItem = {
       id: Date.now().toString(),
       emoji: moods.find(m => m.label === selectedMood)?.emoji || '🙂',
       mood: selectedMood, text: moodText, time: 'Just now',
-      reactions: { relate: 0, respond: 0, save: 0 },
-    }, ...feedData]);
+      reactions: { relate: 0, comments: 0 },
+      liked: false, comments: [],
+    };
+    setFeedData(prev => [newItem, ...prev]);
     setMoodText(''); setSelectedMood(null);
+  };
+
+  // Optimistic like toggle — instant UI update + notification
+  const handleLike = (id: string) => {
+    setFeedData(prev => prev.map(item => {
+      if (item.id !== id) return item;
+      const nowLiked = !item.liked;
+      if (nowLiked) addNotification('like', 'Someone related to your mood post');
+      return {
+        ...item,
+        liked: nowLiked,
+        reactions: { ...item.reactions, relate: item.reactions.relate + (nowLiked ? 1 : -1) },
+      };
+    }));
+  };
+
+  // Open comments modal
+  const openComments = (item: MoodItem) => setCommentTarget(item);
+
+  // Submit a comment
+  const handleAddComment = () => {
+    if (!newComment.trim() || !commentTarget) return;
+    const comment: MoodComment = { id: Date.now().toString(), text: newComment.trim(), time: 'Just now' };
+    setFeedData(prev => prev.map(item => {
+      if (item.id !== commentTarget.id) return item;
+      return {
+        ...item,
+        comments: [...item.comments, comment],
+        reactions: { ...item.reactions, comments: item.reactions.comments + 1 },
+      };
+    }));
+    // Update the modal target too so the list refreshes
+    setCommentTarget(prev => prev ? { ...prev, comments: [...prev.comments, comment] } : null);
+    addNotification('comment', 'Your comment was added to the mood space');
+    setNewComment('');
   };
 
   const handleJoinToggle = (id: string) => {
     setCommunities(prev => prev.map(c => {
       if (c.id !== id) return c;
-      if (c.isPrivate && !c.joined) return { ...c, requested: !c.requested };
-      return { ...c, joined: !c.joined, members: c.joined ? c.members - 1 : c.members + 1 };
+      if (c.isPrivate && !c.joined) {
+        const requesting = !c.requested;
+        if (requesting) addNotification('join_request', `Your request to join ${c.name} was sent`);
+        return { ...c, requested: requesting };
+      }
+      const joining = !c.joined;
+      if (joining) addNotification('follow', `You joined ${c.name} ${c.emoji}`);
+      return { ...c, joined: joining, members: c.joined ? c.members - 1 : c.members + 1 };
     }));
   };
 
@@ -783,6 +830,7 @@ export default function ExploreScreen() {
           const tag = moodTagColors[item.mood] || { bg: '#f3f4f6', text: '#111' };
           return (
             <View key={item.id} style={{ backgroundColor: C.card, borderRadius: 20, padding: 18, borderWidth: 1, borderColor: C.border }}>
+              {/* Header */}
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <Text style={{ fontSize: 24 }}>{item.emoji}</Text>
@@ -792,22 +840,34 @@ export default function ExploreScreen() {
                 </View>
                 <Text style={{ color: C.textMuted, fontSize: 12 }}>{item.time}</Text>
               </View>
+
+              {/* Body */}
               <Text style={{ color: C.text, fontSize: 14, lineHeight: 22, marginBottom: 14 }}>{item.text}</Text>
+
+              {/* Reactions — Like (toggleable) + Comment (no Save) */}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 20, paddingTop: 12, borderTopWidth: 1, borderTopColor: C.border }}>
-                <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                  <Heart size={17} color={C.primary} />
-                  <Text style={{ color: C.text, fontSize: 13, fontWeight: '600' }}>{item.reactions.relate}</Text>
+                <TouchableOpacity
+                  onPress={() => handleLike(item.id)}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
+                >
+                  <Heart
+                    size={18}
+                    color={item.liked ? C.primary : C.textMuted}
+                    fill={item.liked ? C.primary : 'transparent'}
+                  />
+                  <Text style={{ color: item.liked ? C.primary : C.text, fontSize: 13, fontWeight: '600' }}>
+                    {item.reactions.relate}
+                  </Text>
                   <Text style={{ color: C.textMuted, fontSize: 13 }}>Relate</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                  <MessageCircle size={17} color={C.textMuted} />
-                  <Text style={{ color: C.text, fontSize: 13, fontWeight: '600' }}>{item.reactions.respond}</Text>
-                  <Text style={{ color: C.textMuted, fontSize: 13 }}>Respond</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                  <Bookmark size={17} color={C.textMuted} />
-                  <Text style={{ color: C.text, fontSize: 13, fontWeight: '600' }}>{item.reactions.save}</Text>
-                  <Text style={{ color: C.textMuted, fontSize: 13 }}>Save</Text>
+
+                <TouchableOpacity
+                  onPress={() => openComments(item)}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
+                >
+                  <MessageCircle size={18} color={C.textMuted} />
+                  <Text style={{ color: C.text, fontSize: 13, fontWeight: '600' }}>{item.reactions.comments}</Text>
+                  <Text style={{ color: C.textMuted, fontSize: 13 }}>Comment</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -1113,6 +1173,90 @@ export default function ExploreScreen() {
             <View style={{ height: 20 }} />
           </TouchableOpacity>
         </TouchableOpacity>
+      </Modal>
+
+      {/* ── Comments Modal ── */}
+      <Modal
+        visible={!!commentTarget}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setCommentTarget(null)}
+      >
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setCommentTarget(null)}>
+            <TouchableOpacity
+              activeOpacity={1}
+              onPress={e => e.stopPropagation()}
+              style={{
+                position: 'absolute', bottom: 0, left: 0, right: 0,
+                borderTopLeftRadius: 28, borderTopRightRadius: 28,
+                backgroundColor: C.card, maxHeight: '80%',
+              }}
+            >
+              <View style={{ padding: 20, paddingBottom: 0 }}>
+                <View style={{ width: 40, height: 4, backgroundColor: C.border, borderRadius: 2, alignSelf: 'center', marginBottom: 18 }} />
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                  <Text style={{ color: C.text, fontSize: 20, fontWeight: 'bold' }}>
+                    Comments ({commentTarget?.reactions.comments ?? 0})
+                  </Text>
+                  <TouchableOpacity onPress={() => setCommentTarget(null)}>
+                    <X size={22} color={C.textMuted} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Comment list */}
+              <ScrollView contentContainerStyle={{ paddingHorizontal: 20, gap: 12, paddingBottom: 8 }}>
+                {(commentTarget?.comments ?? []).length === 0 && (
+                  <View style={{ alignItems: 'center', paddingVertical: 24 }}>
+                    <Text style={{ fontSize: 32, marginBottom: 8 }}>💬</Text>
+                    <Text style={{ color: C.textMuted, fontSize: 14 }}>No comments yet — be the first!</Text>
+                  </View>
+                )}
+                {(commentTarget?.comments ?? []).map(c => (
+                  <View key={c.id} style={{ backgroundColor: C.cardAlt, borderRadius: 14, padding: 14 }}>
+                    <Text style={{ color: C.text, fontSize: 14, lineHeight: 20 }}>{c.text}</Text>
+                    <Text style={{ color: C.textMuted, fontSize: 11, marginTop: 6 }}>{c.time}</Text>
+                  </View>
+                ))}
+              </ScrollView>
+
+              {/* New comment input */}
+              <View style={{
+                flexDirection: 'row', alignItems: 'center', gap: 10,
+                padding: 16, borderTopWidth: 1, borderTopColor: C.border,
+              }}>
+                <TextInput
+                  value={newComment}
+                  onChangeText={setNewComment}
+                  placeholder="Add a supportive comment..."
+                  placeholderTextColor={C.textMuted}
+                  style={{
+                    flex: 1, backgroundColor: C.cardAlt, borderRadius: 20,
+                    paddingHorizontal: 16, paddingVertical: 10,
+                    color: C.text, fontSize: 14,
+                  }}
+                  returnKeyType="send"
+                  onSubmitEditing={handleAddComment}
+                />
+                <TouchableOpacity
+                  onPress={handleAddComment}
+                  disabled={!newComment.trim()}
+                  style={{
+                    width: 42, height: 42, borderRadius: 21,
+                    backgroundColor: newComment.trim() ? C.primary : C.cardAlt,
+                    alignItems: 'center', justifyContent: 'center',
+                  }}
+                >
+                  <Send size={18} color={newComment.trim() ? '#fff' : C.textMuted} />
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
