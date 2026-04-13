@@ -811,6 +811,7 @@ import { Header } from '@/components/Header';
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { Heart, MapPin, MessageCircle, X } from "lucide-react-native";
+import { useColorScheme } from 'nativewind';
 import React, { useState } from "react";
 import { Dimensions, Image, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import Animated, {
@@ -825,16 +826,6 @@ import Animated, {
 
 const { width } = Dimensions.get("window");
 
-const COLORS = {
-  background: '#111111',
-  card: '#1c1c1e',
-  primary: '#E63946',
-  primaryLight: '#fb7185',
-  border: '#3f3f46',
-  text: '#ffffff',
-  textMuted: '#9ca3af',
-  white: '#ffffff',
-};
 
 type Profile = {
   id: string;
@@ -909,6 +900,18 @@ const mockProfiles: Profile[] = [
 type FlyingEmoji = { id: number; emoji: string; angle: number };
 
 export default function DiscoverScreen() {
+  const { colorScheme } = useColorScheme();
+  const isDark = colorScheme === 'dark';
+  const COLORS = {
+    background: isDark ? '#1c1917' : '#FFF8F5',
+    card: isDark ? '#292524' : '#ffffff',
+    primary: '#E63946',
+    primaryLight: '#fb7185',
+    border: isDark ? '#44403c' : '#f0e6e1',
+    text: isDark ? '#fafaf9' : '#2B2B2B',
+    textMuted: isDark ? '#a8a29e' : '#78716c',
+    white: '#ffffff',
+  };
   const router = useRouter();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [flyingEmojis, setFlyingEmojis] = useState<FlyingEmoji[]>([]);

@@ -355,18 +355,9 @@
 import { Header } from "@/components/Header";
 import { useRouter } from "expo-router";
 import { Heart, MessageCircle, Search, Send, Users } from "lucide-react-native";
+import { useColorScheme } from 'nativewind';
 import { useState } from "react";
 import { Image, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
-
-const COLORS = {
-  background: '#111111',
-  card: '#1c1c1e',
-  primary: '#E63946',
-  border: '#3f3f46',
-  text: '#ffffff',
-  textMuted: '#9ca3af',
-  online: '#2ECC71',
-};
 
 type VibedProfile = {
   id: string;
@@ -405,6 +396,17 @@ const CHATS: Chat[] = [
 ];
 
 export default function InboxScreen() {
+  const { colorScheme } = useColorScheme();
+  const isDark = colorScheme === 'dark';
+  const COLORS = {
+    background: isDark ? '#1c1917' : '#FFF8F5',
+    card: isDark ? '#292524' : '#ffffff',
+    primary: '#E63946',
+    border: isDark ? '#44403c' : '#f0e6e1',
+    text: isDark ? '#fafaf9' : '#2B2B2B',
+    textMuted: isDark ? '#a8a29e' : '#78716c',
+    online: '#2ECC71',
+  };
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTab, setSelectedTab] = useState<"all" | "unread">("all");
